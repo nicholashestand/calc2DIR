@@ -1,0 +1,11 @@
+# input file template for calc2DIR
+energy_file  energy.bin  # energy file
+dipole_file  dipole.bin  # dipole file
+time_step    0.20        # time step in ps
+t1_max       10.         # maximum t1 in ps
+t3_max       10.         # maximum t3 in ps
+t2           0.          # waiting time in ps
+nsamples     1           # number of samples to take
+sample_every 0.          # how often to sample system in ps 
+nframes      10          # number of frames in the trajectory to be considered
+nchrom       1           # number of uncoupled chromophores to consider
