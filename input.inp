@@ -7,9 +7,11 @@ t1_max       20.0        # maximum t1 in ps
 t3_max       1.          # maximum t3 in ps
 t2           0.          # waiting time in ps
 rt2          1.00        # relaxation time T2 in ps
+rt1          1.00        # relaxation time T1 in ps
 nsamples     100         # number of samples to take
 sample_every 100.        # how often to sample system in ps 
-nframes      100000      # number of frames in the trajectory to be considered
+#nframes      100000      # number of frames in the trajectory to be considered
 nchrom       2           # number of uncoupled chromophores to consider
 window0      1400        # lower limit for spectral window
 window1      1700        # upper limit for spectral window
+anharm       14.0        # anharmonicity in cm-1
