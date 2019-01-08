@@ -263,18 +263,18 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
             R2Dtmp += img*mu*  
                       eint_t1[chrom]*exp(-t1*dt/RT2)        // first pulse oscillating in 01 coherence
                                     *exp(-t2*dt/RT1)        // second pulse population relaxation
-                    *eint_t3[chrom] *exp(-t3*dt/RT2);       // third pulse oscillating in 01 coherence
+                     *eint_t3[chrom]*exp(-t3*dt/RT2);       // third pulse oscillating in 01 coherence
         }
         else if ( which.compare("R3") == 0 ){ // rephasing
-            R2Dtmp += 2.*img*mu*                               // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
+            R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
                       conj(eint_t1[chrom])*exp(-t1*dt/RT2)  // first pulse oscillating in 01 coherence
                                           *exp(-t2*dt/RT1)  // second pulse population relaxation
                           *eint_t3[chrom] *exp(-t3*dt/RT2)  // third pulse oscillating in 01 coherence
-                          *exp(img*(dt*t3)*anharm/HBAR);         // include anharmonicity term for the 12 transition
+                          *exp(img*(dt*t3)*anharm/HBAR);    // include anharmonicity term for the 12 transition
                             
         }
         else if ( which.compare("R6") == 0 ){ // non-rephasing
-            R2Dtmp += 2.*img*mu*                               // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
+            R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
                       eint_t1[chrom]*exp(-t1*dt/RT2)        // first pulse oscillating in 01 coherence
                                     *exp(-t2*dt/RT1)        // second pulse population relaxation
                     *eint_t3[chrom] *exp(-t3*dt/RT2)        // third pulse oscillating in 01 coherence
@@ -291,40 +291,39 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 
 
 
-int IR2D::get_eint_t1( int t1 )
+int IR2D::get_eint( int t, string which )
 // integral from t0 to t1 for linear and third order response functions of 01 frequency
 // See Eq 7.10 from Hamm and Zanni for linear response function
 // See Eq 7.35 from Hamm and Zanni for third order response function
 {
     complex<double> arg;
+    int chrom;
 
-    for ( int chrom = 0; chrom < nchrom; chrom ++ ){
-        // reset integral to zero at t1 = 0 (the exponential will be 1)
-        if ( t1 == 0 ) eint_t1[chrom] = complex_one;
-        else {
-            // integrate the equation for each chromophore using the trapezoid rule
-            arg = -img*dt*(energy_t1_last[chrom]+energy_t1[chrom])/(2.*HBAR);
-            eint_t1[chrom] *= exp(arg);
+    if ( which.compare("t1") == 0 ){
+        for ( chrom = 0; chrom < nchrom; chrom ++ ){
+            // reset integral to zero at t1 = 0 (the exponential will be 1)
+            if ( t == 0 ) eint_t1[chrom] = complex_one;
+            else {
+                // integrate the equation for each chromophore using the trapezoid rule
+                arg = -img*dt*(energy_t1_last[chrom]+energy_t1[chrom])/(2.*HBAR);
+                eint_t1[chrom] *= exp(arg);
+            }
         }
     }
-    
-    return IR2DOK;
-}
-
-int IR2D::get_eint_t3( int t3 )
-// integral from t1+t2 to t1+t2+t3 for third order response functions of 01 frequency
-// See Eq 7.35 from Hamm and Zanni for third order response function
-{
-    complex<double> arg;
-
-    for ( int chrom = 0; chrom < nchrom; chrom ++ ){
-        // reset integral to zero at t3 = 0 (the exponential will be 1)
-        if ( t3 == 0 ) eint_t3[chrom] = complex_one;
-        else {
-            // integrate the equation for each chromophore using the trapezoid rule
-            arg = -img*dt*(energy_t3_last[chrom]+energy_t3[chrom])/(2.*HBAR);
-            eint_t3[chrom] *= exp(arg);
+    else if ( which.compare("t3") == 0 ){
+        for ( chrom = 0; chrom < nchrom; chrom ++ ){
+            // reset integral to zero at t3 = 0 (the exponential will be 1)
+            if ( t == 0 ) eint_t3[chrom] = complex_one;
+            else {
+                // integrate the equation for each chromophore using the trapezoid rule
+                arg = -img*dt*(energy_t3_last[chrom]+energy_t3[chrom])/(2.*HBAR);
+                eint_t3[chrom] *= exp(arg);
+            }
         }
+    }
+    else{
+        cout << "ERROR:: IR2D::get_eint which= " << which << " unknown. Aborting." << endl;
+        exit(EXIT_FAILURE);
     }
     
     return IR2DOK;
@@ -336,27 +335,86 @@ double IR2D::dot3( vec3 x, vec3 y )
     return x[0]*y[0] + x[1]*y[1] + x[2]*y[2]; 
 }
 
-int IR2D::write1D()
-// write response function and FTIR spectrum
+int IR2D::writeR1D()
+// write R1D to file
 {
-    string fn;
+    string fn=_ofile_+"-R1D.dat";
     ofstream ofile;
-    const int length=32768;
-    complex<double> fftIn[length];
-    complex<double> fftOut[length];
-    fftw_plan plan;
-    double convert, freq, scale, abs[length], dis[length];
+    int t1;
 
-    fn = _ofile_+"-R1D.dat";
-    ofile.open(fn);
+    ofile.open( fn );
     if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
     cout << ">>> Writing " << fn << "." << endl;
 
     ofile << "# time (ps) Real Imag" << endl;
-    for ( int i = 0; i < t1_npoints; i ++ ){
-        ofile << i * dt << " " << R1D[i].real() << " " << R1D[i].imag() << endl;
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        ofile << t1 * dt << " " << R1D[t1].real() << " " << R1D[t1].imag() << endl;
     }
     ofile.close();
+
+    return IR2DOK;
+}
+
+int IR2D::writeR2D()
+// write R2D to file
+{
+    string fn;
+    ofstream ofile;
+    int t1, t3;
+    complex<double> Rtmp;
+
+    // write rephasing response function
+    fn=_ofile_+"-RparI.dat";
+    ofile.open( fn );
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    cout << ">>> Writing " << fn << "." << endl;
+
+    ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
+    ofile << "# t1 (ps) t3 (ps) Real Imag" << endl;
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+            // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
+            // The experiment can only see all rephasing or non-rephasing, not the individual
+            // response functions, so add them here.
+            Rtmp = 2.*R2D_R1[t1 * t3_npoints + t3] + R2D_R3[t1 * t3_npoints + t3];
+            ofile << t1 * dt << " " << t3 * dt << " " << Rtmp.real() << " " << Rtmp.imag() << endl;
+        }
+    }
+    ofile.close();
+
+    // write non-rephasing response function
+    fn=_ofile_+"-RparII.dat";
+    ofile.open( fn );
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    cout << ">>> Writing " << fn << "." << endl;
+
+    ofile << "# Non-rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
+    ofile << "# t1 (ps) t3 (ps) Real Imag" << endl;
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+            // see Hamm and Zanni eq 4.23 and note R4=R5, hence the factor of 2
+            // The experiment can only see all rephasing or non-rephasing, not the individual
+            // response functions, so add them here.
+            Rtmp = 2.*R2D_R4[t1 * t3_npoints + t3] + R2D_R6[t1 * t3_npoints + t3];
+            ofile << t1 * dt << " " << t3 * dt << " " << Rtmp.real() << " " << Rtmp.imag() << endl;
+        }
+    }
+    ofile.close();
+
+    return IR2DOK;
+}
+
+/*
+int IR2D::writeR1D()
+// write response function and FTIR spectrum
+{
+    string fn;
+    ofstream ofile;
+    const int length=4096;
+    complex<double> fftIn[length];
+    complex<double> fftOut[length];
+    fftw_plan plan;
+    double convert, freq, scale, abs[length], dis[length];
 
     // do fft
     plan = fftw_plan_dft_1d( length, reinterpret_cast<fftw_complex*>(fftIn), \
@@ -409,6 +467,7 @@ int IR2D::write1D()
     ofile.close();
 
 }
+*/
 
 int main( int argc, char* argv[] )
 {
@@ -441,7 +500,7 @@ int main( int argc, char* argv[] )
         cout << sample << "/" << spectrum.nsamples << endl;
         
         // loop over t1
-        for ( int t1 = 0; t1 < spectrum.t1_npoints; t1 ++ ){
+        for ( t1 = 0; t1 < spectrum.t1_npoints; t1 ++ ){
             // get frame number for current t1
             frame_t1 = frame0 + t1;
 
@@ -454,7 +513,7 @@ int main( int argc, char* argv[] )
             }
             
             // get exponential integral, calculate 1D response function, and save energy in t1_last
-            spectrum.get_eint_t1( t1 );
+            spectrum.get_eint( t1, "t1" );
             spectrum.R1D[t1] += spectrum.getR1D( t1 );
             memcpy( spectrum.energy_t1_last, spectrum.energy_t1, spectrum.nchrom*sizeof(double) );
 
@@ -465,8 +524,6 @@ int main( int argc, char* argv[] )
             }
 
             // loop over t3 at current t1
-            // TODO:: Could parallelize with open mp if desired... may require restructuring
-            // may be easier to parallelize over samples
             for ( t3 = 0; t3 < spectrum.t3_npoints; t3 ++ ){
                 // get frame number for current t3
                 frame_t3 = frame0 + t1 + t2 + t3;
@@ -480,7 +537,7 @@ int main( int argc, char* argv[] )
                 }
 
                 // calculate 2D response function then save energy in t3_last
-                spectrum.get_eint_t3(t3);
+                spectrum.get_eint(t3, "t3");
                 spectrum.R2D_R1[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R1" );
                 spectrum.R2D_R3[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R3" );
                 spectrum.R2D_R4[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R4" );
@@ -502,7 +559,9 @@ int main( int argc, char* argv[] )
         }
     }
 
-    // write the response functions and the spectrum
-    spectrum.write1D();
-    // TODO: 2D response functions
+    // do fourier transforms and write them out
+    spectrum.writeR1D();
+    spectrum.writeR2D();
+    //spectrum.write1Dfft();
+    //spectrum.write2Dfft();
 }

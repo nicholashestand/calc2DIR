@@ -70,11 +70,13 @@ class IR2D
         template<class T> void tellParam( string param, T value );
         int readEframe( int frame, string time );
         int readDframe( int frame, string time );
-        int get_eint_t1( int t1 );
-        int get_eint_t3( int t3 );
+        int get_eint( int t1, string which );
         complex<double> getR1D( int t1 );
         complex<double> getR2D( int t1, int t2, string which );
-        int write1D();
+        int writeR1D();
+        int writeR2D();
+        int fft1D();
+        int fft2D();
         double dot3( vec3 x, vec3 y );
 };
 #endif
