@@ -404,17 +404,17 @@ int IR2D::writeR2D()
     return IR2DOK;
 }
 
-/*
-int IR2D::writeR1D()
-// write response function and FTIR spectrum
+
+int IR2D::write1Dfft()
+// write fft of R1D
 {
     string fn;
     ofstream ofile;
     const int length=4096;
-    complex<double> fftIn[length];
-    complex<double> fftOut[length];
+    complex<double> fftIn[length], fftOut[length];
     fftw_plan plan;
-    double convert, freq, scale, abs[length], dis[length];
+    double freq, scale, abs[length], dis[length];
+    int t1;
 
     // do fft
     plan = fftw_plan_dft_1d( length, reinterpret_cast<fftw_complex*>(fftIn), \
@@ -423,27 +423,27 @@ int IR2D::writeR1D()
     
     // See Eq 4.8 from Hamm and Zanni -- Absorptive part
     for ( int i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
-    for ( int i = 0; i < t1_npoints; i ++ ){
-        fftIn[i]        = img*R1D[i];
-        fftIn[length-i] = conj(img*R1D[i]);
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        fftIn[t1]        = img*R1D[t1];
+        fftIn[length-t1] = conj(img*R1D[t1]);
     }
-    fftw_execute(plan); for ( int i = 0; i < length; i ++ ) abs[i] = fftOut[i].real();
+    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) abs[t1] = fftOut[t1].real();
 
     // See Eq 4.11 from Hamm and Zanni -- Dispersive part
     for ( int i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
-    for ( int i = 0; i < t1_npoints; i ++ ){
-        fftIn[i]        = -R1D[i];
-        fftIn[length-i] = conj(-R1D[i]);
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        fftIn[t1]        = -R1D[t1];
+        fftIn[length-t1] = conj(-R1D[t1]);
     }
-    fftw_execute(plan); for ( int i = 0; i < length; i ++ ) dis[i] = fftOut[i].real();
+    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) dis[t1] = fftOut[t1].real();
 
-    fn = _ofile_+"-FTIR.dat";
+    // write file
+    fn = _ofile_+"-R1Dw.dat";
     ofile.open(fn);
     if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
     cout << ">>> Writing " << fn << "." << endl;
-    ofile << "# frequency (cm-1) Absorptive Dispersive" << endl;
+    ofile << "# Frequency (cm-1) Absorptive Dispersive" << endl;
 
-    scale = -dt*length/(2.*PI*HBAR*sqrt(length));
     // scale intensity to keep total area of the spectrum conserved and normalize
     // by root(length) since FFTW3 does not
     // multiply the signal by -1 so it looks like absorption and not signal intensity
@@ -457,7 +457,7 @@ int IR2D::writeR1D()
         if ( freq < window0 or freq > window1 ) continue;
         ofile << freq << " " << scale*abs[i] << " " << scale*dis[i] << endl;
     }
-    // positive frequencies are stored at the beginning
+    // positive frequencies are stored at the beginning of fftOut
     for ( int i = 0; i < length/2; i ++ ){
         // get frequency in wavenumber, add back the shift
         freq   = 2.*PI*HBAR*i/(dt*length) + shift;
@@ -467,7 +467,83 @@ int IR2D::writeR1D()
     ofile.close();
 
 }
-*/
+
+int IR2D::write2DRabs()
+// write the purely absorptive 2D IR spectrum
+{
+    string fn;
+    ofstream ofile;
+    const int length=4096;
+    complex<double> fftIn[length*length], fftOut[length*length];
+    complex<double> fftInTmp, Rtmp;
+    complex<double> RIw[length*length], RIIw[length*length], Rabs[length*length];
+    fftw_plan plan;
+    double freq, scale;
+    int t1, t3, w1, w3, negw1;
+
+    // do fft plan
+    plan = fftw_plan_dft_2d( length, length, \
+                             reinterpret_cast<fftw_complex*>(fftIn), \
+                             reinterpret_cast<fftw_complex*>(fftOut),\
+                             FFTW_BACKWARD, FFTW_ESTIMATE );
+    
+    // fourier transform rephasing response functions, see Hamm and Zanni eq 4.31
+    // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
+    for ( int i = 0; i < length*length ; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+            fftInTmp = 2.*img*R2D_R1[ t1*t3_npoints + t3 ]\
+                       +  img*R2D_R3[ t1*t3_npoints + t3 ];
+            fftIn[ t1*t3_npoints + t3 ] = fftInTmp;
+        }
+    }
+    fftw_execute(plan);
+
+    // save rephasing spectrum in RparIw
+    for ( w1 = 0; w1 < length; w1 ++ ){
+        for ( w3 = 0; w3 < length; w3 ++ ){
+            RIw[ w1*length + w3 ] = fftOut[ w1*length + w3 ];
+        }
+    }
+
+    // fourier transform nonrephasing response functions, see Hamm and Zanni eq 4.31
+    // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
+    for ( int i = 0; i < length*length ; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+            fftInTmp = 2.*img*R2D_R4[ t1*t3_npoints + t3 ]\
+                       +  img*R2D_R6[ t1*t3_npoints + t3 ];
+            fftIn[ t1*t3_npoints + t3 ] = fftInTmp;
+        }
+    }
+    fftw_execute(plan);
+
+    // save non-rephasing spectrum in RparIIw
+    for ( w1 = 0; w1 < length; w1 ++ ){
+        for ( w3 = 0; w3 < length; w3 ++ ){
+            RIIw[ w1*length + w3 ] = fftOut[ w1*length + w3 ];
+        }
+    }
+
+    // initialize purely absorptive spectrum to zero
+    for ( int i = 0; i < length*length; i ++ ) Rabs[i] = 0.;
+    
+    // for the purly absorptive spectrum, the w1 frequencies from the rephasing 
+    // fourier transformed response functions need to be negated
+    // determine absorptive 2D IR spectrum, see Hamm and Zanni Eq 4.36
+    for ( w1 = 0; w1 < length; w1 ++ ){
+        negw1 = length - w1;
+        for ( w3 = 0; w3 < length; w3 ++ ){
+            Rtmp = RIw[ negw1*length + w3 ] + RIIw[ w1*length + w3 ];
+            Rabs[ w1*length + w3 ] = Rtmp;
+        }
+    }
+
+    // write out the spectrum
+    // TODO:: (note it is only the real part.)
+
+    return IR2DOK;
+}
 
 int main( int argc, char* argv[] )
 {
@@ -562,6 +638,7 @@ int main( int argc, char* argv[] )
     // do fourier transforms and write them out
     spectrum.writeR1D();
     spectrum.writeR2D();
-    //spectrum.write1Dfft();
-    //spectrum.write2Dfft();
+    spectrum.write1Dfft();
+    spectrum.write2DRabs();
+    cout << ">>> Done!" << endl;
 }

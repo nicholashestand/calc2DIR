@@ -75,8 +75,8 @@ class IR2D
         complex<double> getR2D( int t1, int t2, string which );
         int writeR1D();
         int writeR2D();
-        int fft1D();
-        int fft2D();
+        int write1Dfft();
+        int write2DRabs();
         double dot3( vec3 x, vec3 y );
 };
 #endif
