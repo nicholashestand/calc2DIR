@@ -104,8 +104,7 @@ int IR2D::readParam( string _inpf_ )
         else if ( para.compare("t1_max") == 0 )       t1_max       = stof(value);
         else if ( para.compare("t3_max") == 0 )       t3_max       = stof(value);
         else if ( para.compare("t2") == 0 )           t2           = stof(value);
-        else if ( para.compare("rt2") == 0 )          RT2          = stof(value);
-        else if ( para.compare("rt1") == 0 )          RT1          = stof(value);
+        else if ( para.compare("lifetimet1") == 0 )   lifetime_T1  = stof(value);
         else if ( para.compare("anharm") == 0 )       anharm       = stof(value);
         else if ( para.compare("nsamples") == 0 )     nsamples     = stoi(value);
         else if ( para.compare("sample_every") == 0 ) sample_every = stof(value);
@@ -124,8 +123,7 @@ int IR2D::readParam( string _inpf_ )
     tellParam<double>( "t1_max", t1_max );
     tellParam<double>( "t3_max", t3_max );
     tellParam<double>( "t2", t2 );
-    tellParam<double>( "T2", RT2 );
-    tellParam<double>( "T1", RT1 );
+    tellParam<double>( "lifetimeT1", lifetime_T1 );
     tellParam<double>( "anharm", anharm );
     tellParam<int>( "nsamples", nsamples );
     tellParam<int>( "sample_every", sample_every );
@@ -143,6 +141,10 @@ int IR2D::readParam( string _inpf_ )
     shift = (window1 + window0)/2.;
     cout << ">>> Shifting frequencies by: " << shift << " cm." << endl;
 
+    // set T2 lifetime as 2*T1 (see Hamm and Zanni p29 for discussion)
+    // also see Liang and Jansen JCTC 2012 eq 14 and 16
+    lifetime_T2 = 2*lifetime_T1;
+    cout << ">>> Setting T2 to 2*T1: " << lifetime_T2 << " ps." << endl;
 
     return IR2DOK;
 }
@@ -229,8 +231,7 @@ complex<double> IR2D::getR1D( int t1 )
         // Also note that this is an isotropic averaged spectrum
         mu      = dot3(dipole_t0[chrom],dipole_t1[chrom]);
         // average the response function over all of the chromophores then return
-        // note that we have included the T2 relaxation here
-        R1Dtmp += img*mu*eint_t1[chrom]*exp(-t1*dt/RT2);
+        R1Dtmp += img*mu*eint_t1[chrom]*exp(-t1*dt/lifetime_T2);
     }
 
     return R1Dtmp/(1.*nchrom);
@@ -242,44 +243,43 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 {
     double mu;
     complex<double> R2Dtmp;
+    double lifetime_T2_12 = 2.*lifetime_T1/3.;// Note that Jansen's NISE code sets T2 lifetimes equal
 
     R2Dtmp = complex_zero;
     for ( int chrom = 0; chrom < nchrom; chrom ++ ){
         // dipole part -- NOTE: I DO NOT MAKE THE CONDON APPROXIMATION
-        // Also note that this is an isotropic spectrum where all three
-        // pulses have the same polarization 
+        // Also note that this is an isotropically averaged spectrum where 
+        // all three pulses have the same polarization 
         mu      = dot3(dipole_t0[chrom],dipole_t1[chrom])*
                   dot3(dipole_t2[chrom],dipole_t3[chrom]);
 
         // average the response function over all of the chromophores then return
-        // note that we have included the T2 relaxation here
         if ( which.compare("R1") == 0 ){ // rephasing
             R2Dtmp += img*mu* 
-                      conj(eint_t1[chrom])*exp(-t1*dt/RT2)  // first pulse oscillating in 01 coherence
-                                          *exp(-t2*dt/RT1)  // second pulse population relaxation
-                          *eint_t3[chrom] *exp(-t3*dt/RT2); // third pulse oscillating in 01 coherence
+                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    // first pulse oscillating in 01 coherence
+                                          *exp(-t2   /lifetime_T1)    // second pulse population relaxation (note t2 is in ps already)
+                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2);   // third pulse oscillating in 01 coherence
         }
         else if ( which.compare("R4") == 0 ){ // non-rephasing
             R2Dtmp += img*mu*  
-                      eint_t1[chrom]*exp(-t1*dt/RT2)        // first pulse oscillating in 01 coherence
-                                    *exp(-t2*dt/RT1)        // second pulse population relaxation
-                     *eint_t3[chrom]*exp(-t3*dt/RT2);       // third pulse oscillating in 01 coherence
+                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)          // first pulse oscillating in 01 coherence
+                                    *exp(-t2   /lifetime_T1)          // second pulse population relaxation (note t2 is in ps already)
+                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2);         // third pulse oscillating in 01 coherence
         }
-        // TODO:: FIX the relaxation time for 12 -- see eq 4.21
         else if ( which.compare("R3") == 0 ){ // rephasing
-            R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
-                      conj(eint_t1[chrom])*exp(-t1*dt/RT2)  // first pulse oscillating in 01 coherence
-                                          *exp(-t2*dt/RT1)  // second pulse population relaxation
-                          *eint_t3[chrom] *exp(-t3*dt/RT2)  // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
-                          *exp(img*(dt*t3)*anharm/HBAR);    // include anharmonicity term for the 12 transition
+            R2Dtmp -= 2.*img*mu*                                      // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
+                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    // first pulse oscillating in 01 coherence
+                                          *exp(-t2   /lifetime_T1)    // second pulse population relaxation (note t2 is in ps already)
+                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12) // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
+                          *exp(img*(dt*t3)*anharm/HBAR);              // include anharmonicity term for the 12 transition
                             
         }
         else if ( which.compare("R6") == 0 ){ // non-rephasing
-            R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
-                      eint_t1[chrom]*exp(-t1*dt/RT2)        // first pulse oscillating in 01 coherence
-                                    *exp(-t2*dt/RT1)        // second pulse population relaxation
-                    *eint_t3[chrom] *exp(-t3*dt/RT2)        // third pulse oscillating in 12 coherence -- 
-                    *exp(img*(dt*t3)*anharm/HBAR);          // include anharmonicity term for the 12 transition
+            R2Dtmp -= 2.*img*mu*                                      // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
+                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)          // first pulse oscillating in 01 coherence
+                                    *exp(-t2   /lifetime_T1)          // second pulse population relaxation (note t2 is in ps already)
+                    *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12)       // third pulse oscillating in 12 coherence -- 
+                    *exp(img*(dt*t3)*anharm/HBAR);                    // include anharmonicity term for the 12 transition
         }
         else {
             cout << "ERROR:: IR2D::getR2D which= " << which << " is unknown. Aborting." << endl;
@@ -690,6 +690,6 @@ int main( int argc, char* argv[] )
     spectrum.writeR1D();
     spectrum.writeR2D();
     spectrum.write1Dfft();
-    spectrum.write2DRabs();
+    //spectrum.write2DRabs();
     cout << ">>> Done!" << endl;
 }

@@ -21,8 +21,8 @@ class IR2D
         double t1_max=10. ;             // t1 max in ps
         double t2    =0.  ;             // t2 in ps
         double t3_max=10. ;             // t3 max in ps
-        double RT2=0.3;                 // T2 relaxation time
-        double RT1=0.3;                 // T1 relaxation time
+        double lifetime_T1=0.2;         // lifetime T2 in ps
+        double lifetime_T2;             // lifetime T1 in ps
         double anharm=14.0;             // anharmonicity in cm-1
         int    nsamples=1 ;             // number of samples
         double sample_every=10.;        // how often to take a new sample in ps
