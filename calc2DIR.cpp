@@ -265,11 +265,12 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
                                     *exp(-t2*dt/RT1)        // second pulse population relaxation
                      *eint_t3[chrom]*exp(-t3*dt/RT2);       // third pulse oscillating in 01 coherence
         }
+        // TODO:: FIX the relaxation time for 12 -- see eq 4.21
         else if ( which.compare("R3") == 0 ){ // rephasing
             R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
                       conj(eint_t1[chrom])*exp(-t1*dt/RT2)  // first pulse oscillating in 01 coherence
                                           *exp(-t2*dt/RT1)  // second pulse population relaxation
-                          *eint_t3[chrom] *exp(-t3*dt/RT2)  // third pulse oscillating in 01 coherence
+                          *eint_t3[chrom] *exp(-t3*dt/RT2)  // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
                           *exp(img*(dt*t3)*anharm/HBAR);    // include anharmonicity term for the 12 transition
                             
         }
@@ -277,8 +278,8 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
             R2Dtmp -= 2.*img*mu*                            // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
                       eint_t1[chrom]*exp(-t1*dt/RT2)        // first pulse oscillating in 01 coherence
                                     *exp(-t2*dt/RT1)        // second pulse population relaxation
-                    *eint_t3[chrom] *exp(-t3*dt/RT2)        // third pulse oscillating in 01 coherence
-                    *exp(img*(dt*t3)*anharm/HBAR);
+                    *eint_t3[chrom] *exp(-t3*dt/RT2)        // third pulse oscillating in 12 coherence -- 
+                    *exp(img*(dt*t3)*anharm/HBAR);          // include anharmonicity term for the 12 transition
         }
         else {
             cout << "ERROR:: IR2D::getR2D which= " << which << " is unknown. Aborting." << endl;
@@ -410,11 +411,17 @@ int IR2D::write1Dfft()
 {
     string fn;
     ofstream ofile;
+    //const int length=4096;
     const int length=4096;
-    complex<double> fftIn[length], fftOut[length];
+    complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
-    double freq, scale, abs[length], dis[length];
+    double freq, scale;
     int t1;
+
+    // allocate arrays
+    fftIn  = new complex<double>[length]();
+    fftOut = new complex<double>[length]();
+    res    = new complex<double>[length]();
 
     // do fft
     plan = fftw_plan_dft_1d( length, reinterpret_cast<fftw_complex*>(fftIn), \
@@ -424,19 +431,19 @@ int IR2D::write1Dfft()
     // See Eq 4.8 from Hamm and Zanni -- Absorptive part
     for ( int i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        fftIn[t1]        = img*R1D[t1];
-        fftIn[length-t1] = conj(img*R1D[t1]);
+        fftIn[t1]          = img*R1D[t1];
+        fftIn[length-1-t1] = conj(img*R1D[t1]);
     }
-    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) abs[t1] = fftOut[t1].real();
+    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) res[t1].real(fftOut[t1].real());
 
     // See Eq 4.11 from Hamm and Zanni -- Dispersive part
     for ( int i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        fftIn[t1]        = -R1D[t1];
-        fftIn[length-t1] = conj(-R1D[t1]);
+        fftIn[t1]          = -R1D[t1];
+        fftIn[length-1-t1] = conj(-R1D[t1]);
     }
-    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) dis[t1] = fftOut[t1].real();
-
+    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) res[t1].imag(fftOut[t1].real());
+    
     // write file
     fn = _ofile_+"-R1Dw.dat";
     ofile.open(fn);
@@ -455,17 +462,23 @@ int IR2D::write1Dfft()
         // get frequency in wavenumber, add back the shift
         freq   = 2.*PI*HBAR*(i-length)/(dt*length) + shift;
         if ( freq < window0 or freq > window1 ) continue;
-        ofile << freq << " " << scale*abs[i] << " " << scale*dis[i] << endl;
+        ofile << freq << " " << scale*res[i].real() << " " << scale*res[i].imag() << endl;
     }
     // positive frequencies are stored at the beginning of fftOut
     for ( int i = 0; i < length/2; i ++ ){
         // get frequency in wavenumber, add back the shift
         freq   = 2.*PI*HBAR*i/(dt*length) + shift;
         if ( freq < window0 or freq > window1 ) continue;
-        ofile << freq << " " << scale*abs[i] << " " << scale*dis[i] << endl;
+        ofile << freq << " " << scale*res[i].real() << " " << scale*res[i].imag() << endl;
     }
     ofile.close();
 
+    // delete arrays
+    delete [] fftIn;
+    delete [] fftOut;
+    delete [] res;
+
+    return IR2DOK;
 }
 
 int IR2D::write2DRabs()
@@ -473,74 +486,112 @@ int IR2D::write2DRabs()
 {
     string fn;
     ofstream ofile;
-    const int length=4096;
-    complex<double> fftIn[length*length], fftOut[length*length];
+    const int length=1024;//4096;
+    complex<double> *fftIn, *fftOut;
     complex<double> fftInTmp, Rtmp;
-    complex<double> RIw[length*length], RIIw[length*length], Rabs[length*length];
+    //complex<double> RIw[length*length], RIIw[length*length], Rabs[length*length];
     fftw_plan plan;
-    double freq, scale;
-    int t1, t3, w1, w3, negw1;
+    double freq1, freq2, scale;
+    int t1, t3, w1, w3, negw1, index0, index1, index;
+
+    // allocate arrays
+    fftIn  = new complex<double>[length*length]();
+    fftOut = new complex<double>[length*length]();
 
     // do fft plan
     plan = fftw_plan_dft_2d( length, length, \
                              reinterpret_cast<fftw_complex*>(fftIn), \
                              reinterpret_cast<fftw_complex*>(fftOut),\
-                             FFTW_BACKWARD, FFTW_ESTIMATE );
+                             FFTW_FORWARD, FFTW_ESTIMATE );
     
     // fourier transform rephasing response functions, see Hamm and Zanni eq 4.31
     // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
     for ( int i = 0; i < length*length ; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
         for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftInTmp = 2.*img*R2D_R1[ t1*t3_npoints + t3 ]\
-                       +  img*R2D_R3[ t1*t3_npoints + t3 ];
-            fftIn[ t1*t3_npoints + t3 ] = fftInTmp;
+            index0 = t1*t3_npoints + t3;
+            index1 = t1*t3_npoints + t3;
+            fftInTmp = 2.*img*R2D_R1[ index0 ]\
+                       +  img*R2D_R3[ index0 ];
+            fftIn[ index1 ] = fftInTmp;
+            continue;
+
+            // use symmetries to get only the real part
+            index1 = (length-1-t1)*t3_npoints + t3;
+            fftInTmp = conj(2.*img*R2D_R1[ index0 ]\
+                            +  img*R2D_R3[ index0 ]);
+            fftIn[ index1 ] = fftInTmp;
+
+            index1 = t1*t3_npoints + (length-1-t3);
+            fftInTmp = conj(2.*img*R2D_R1[ index0 ]\
+                            +  img*R2D_R3[ index0 ]);
+            fftIn[ index1 ] = fftInTmp;
+
+            index1 = (length-1-t1)*t3_npoints + (length-1-t3);
+            fftInTmp = 2.*img*R2D_R1[ index0 ]\
+                       +  img*R2D_R3[ index0 ];
+            fftIn[ index1 ] = fftInTmp;
         }
     }
     fftw_execute(plan);
 
-    // save rephasing spectrum in RparIw
-    for ( w1 = 0; w1 < length; w1 ++ ){
-        for ( w3 = 0; w3 < length; w3 ++ ){
-            RIw[ w1*length + w3 ] = fftOut[ w1*length + w3 ];
+    // write rephasing response function
+    fn=_ofile_+"-RparIw.dat";
+    ofile.open( fn );
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    cout << ">>> Writing " << fn << "." << endl;
+
+    scale = -dt*length/(2.*PI*HBAR*sqrt(length));
+    scale *= scale; // since 2D scaling
+
+    ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
+    ofile << "# w1 (ps) w3 (ps) Real Imag" << endl;
+    // negative frequencies are stored at the end of the fftOut array
+    for ( int i = length/2; i < length; i ++ ){
+        freq1 = 2.*PI*HBAR*(i-length)/(dt*length) + shift;
+        if ( freq1 < window0 or freq1 > window1 ) continue;
+        for ( int j = length/2; j < length; j ++ ){
+            freq2 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
+            if ( freq2 < window0 or freq2 > window1 ) continue;
+            index = i*length + j;
+            ofile << freq1 << " " << freq2 << " " << 
+                     scale*fftOut[index].real() << " " << 0. << endl;
+        }
+        for ( int j = 0; j < length/2; j ++ ){
+            freq2 = 2.*PI*HBAR*j/(dt*length) + shift;
+            if ( freq2 < window0 or freq2 > window1 ) continue;
+            index = i*length + j;
+            ofile << freq1 << " " << freq2 << " " << 
+                     scale*fftOut[index].real() << " " << 0. << endl;
         }
     }
-
-    // fourier transform nonrephasing response functions, see Hamm and Zanni eq 4.31
-    // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
-    for ( int i = 0; i < length*length ; i ++ ) fftIn[i] = complex_zero;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftInTmp = 2.*img*R2D_R4[ t1*t3_npoints + t3 ]\
-                       +  img*R2D_R6[ t1*t3_npoints + t3 ];
-            fftIn[ t1*t3_npoints + t3 ] = fftInTmp;
+    // positive frequencies are stored at the beginning of fftOut
+    for ( int i = 0; i < length/2; i ++ ){
+        freq1 = 2.*PI*HBAR*i/(dt*length) + shift;
+        if ( freq1 < window0 or freq1 > window1 ) continue;
+        for ( int j = length/2; j < length; j ++ ){
+            freq2 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
+            if ( freq2 < window0 or freq2 > window1 ) continue;
+            index = i*length + j;
+            ofile << freq1 << " " << freq2 << " " << 
+                     scale*fftOut[index].real() << " " << 0. << endl;
+        }
+        for ( int j = 0; j < length/2; j ++ ){
+            freq2 = 2.*PI*HBAR*j/(dt*length) + shift;
+            if ( freq2 < window0 or freq2 > window1 ) continue;
+            index = i*length + j;
+            ofile << freq1 << " " << freq2 << " " << 
+                     scale*fftOut[index].real() << " " << 0. << endl;
         }
     }
-    fftw_execute(plan);
+    ofile.close();
 
-    // save non-rephasing spectrum in RparIIw
-    for ( w1 = 0; w1 < length; w1 ++ ){
-        for ( w3 = 0; w3 < length; w3 ++ ){
-            RIIw[ w1*length + w3 ] = fftOut[ w1*length + w3 ];
-        }
-    }
 
-    // initialize purely absorptive spectrum to zero
-    for ( int i = 0; i < length*length; i ++ ) Rabs[i] = 0.;
-    
-    // for the purly absorptive spectrum, the w1 frequencies from the rephasing 
-    // fourier transformed response functions need to be negated
-    // determine absorptive 2D IR spectrum, see Hamm and Zanni Eq 4.36
-    for ( w1 = 0; w1 < length; w1 ++ ){
-        negw1 = length - w1;
-        for ( w3 = 0; w3 < length; w3 ++ ){
-            Rtmp = RIw[ negw1*length + w3 ] + RIIw[ w1*length + w3 ];
-            Rabs[ w1*length + w3 ] = Rtmp;
-        }
-    }
 
-    // write out the spectrum
-    // TODO:: (note it is only the real part.)
+
+    // delete arrays
+    delete [] fftIn;
+    delete [] fftOut;
 
     return IR2DOK;
 }
