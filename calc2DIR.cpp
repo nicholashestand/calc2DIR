@@ -486,13 +486,13 @@ int IR2D::write2DRabs()
 {
     string fn;
     ofstream ofile;
-    const int length=1024;//4096;
+    const int length=4096;
     complex<double> *fftIn, *fftOut;
     complex<double> fftInTmp, Rtmp;
     //complex<double> RIw[length*length], RIIw[length*length], Rabs[length*length];
     fftw_plan plan;
     double freq1, freq2, scale;
-    int t1, t3, w1, w3, negw1, index0, index1, index;
+    int t1, t3, w1, w3, negw1, rnx, fftnx;
 
     // allocate arrays
     fftIn  = new complex<double>[length*length]();
@@ -509,13 +509,15 @@ int IR2D::write2DRabs()
     for ( int i = 0; i < length*length ; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
         for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            index0 = t1*t3_npoints + t3;
-            index1 = t1*t3_npoints + t3;
-            fftInTmp = 2.*img*R2D_R1[ index0 ]\
-                       +  img*R2D_R3[ index0 ];
-            fftIn[ index1 ] = fftInTmp;
-            continue;
+            rnx   = t1*t3_npoints + t3;
+            fftnx = t1*length + t3;
+            fftInTmp = 2.*img*R2D_R1[ rnx ]\
+                       +  img*R2D_R3[ rnx ];
+            fftIn[ fftnx ] = fftInTmp;
 
+            // TODO:: SEEMS TO BE KINDOF WORKING NOW AFTER FIXING THE BUG WITH THE INDEX
+            // NOW JUST FINISH IT
+            /*
             // use symmetries to get only the real part
             index1 = (length-1-t1)*t3_npoints + t3;
             fftInTmp = conj(2.*img*R2D_R1[ index0 ]\
@@ -531,6 +533,7 @@ int IR2D::write2DRabs()
             fftInTmp = 2.*img*R2D_R1[ index0 ]\
                        +  img*R2D_R3[ index0 ];
             fftIn[ index1 ] = fftInTmp;
+            */
         }
     }
     fftw_execute(plan);
@@ -553,16 +556,16 @@ int IR2D::write2DRabs()
         for ( int j = length/2; j < length; j ++ ){
             freq2 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
             if ( freq2 < window0 or freq2 > window1 ) continue;
-            index = i*length + j;
+            fftnx = i*length + j;
             ofile << freq1 << " " << freq2 << " " << 
-                     scale*fftOut[index].real() << " " << 0. << endl;
+                     scale*fftOut[fftnx].real() << " " << 0. << endl;
         }
         for ( int j = 0; j < length/2; j ++ ){
             freq2 = 2.*PI*HBAR*j/(dt*length) + shift;
             if ( freq2 < window0 or freq2 > window1 ) continue;
-            index = i*length + j;
+            fftnx = i*length + j;
             ofile << freq1 << " " << freq2 << " " << 
-                     scale*fftOut[index].real() << " " << 0. << endl;
+                     scale*fftOut[fftnx].real() << " " << 0. << endl;
         }
     }
     // positive frequencies are stored at the beginning of fftOut
@@ -572,16 +575,16 @@ int IR2D::write2DRabs()
         for ( int j = length/2; j < length; j ++ ){
             freq2 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
             if ( freq2 < window0 or freq2 > window1 ) continue;
-            index = i*length + j;
+            fftnx = i*length + j;
             ofile << freq1 << " " << freq2 << " " << 
-                     scale*fftOut[index].real() << " " << 0. << endl;
+                     scale*fftOut[fftnx].real() << " " << 0. << endl;
         }
         for ( int j = 0; j < length/2; j ++ ){
             freq2 = 2.*PI*HBAR*j/(dt*length) + shift;
             if ( freq2 < window0 or freq2 > window1 ) continue;
-            index = i*length + j;
+            fftnx= i*length + j;
             ofile << freq1 << " " << freq2 << " " << 
-                     scale*fftOut[index].real() << " " << 0. << endl;
+                     scale*fftOut[fftnx].real() << " " << 0. << endl;
         }
     }
     ofile.close();
@@ -690,6 +693,6 @@ int main( int argc, char* argv[] )
     spectrum.writeR1D();
     spectrum.writeR2D();
     spectrum.write1Dfft();
-    //spectrum.write2DRabs();
+    spectrum.write2DRabs();
     cout << ">>> Done!" << endl;
 }
