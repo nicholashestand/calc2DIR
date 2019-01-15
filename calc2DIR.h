@@ -20,18 +20,17 @@ class IR2D
         string _dfile_="d.dat";         // name for dipole file
         string _ofile_="spectrum";      // name for output file
         double dt = 0.010 ;             // time step in ps
-        double t1_max=10. ;             // t1 max in ps
-        double t2    =0.  ;             // t2 in ps
-        double t3_max=10. ;             // t3 max in ps
+        double t1t3_max=10.;            // t1 and t3 max in ps
+        double t2=0.;                   // t2 in ps
         double lifetime_T1=0.2;         // lifetime T2 in ps
         double lifetime_T2;             // lifetime T1 in ps
         double anharm=14.0;             // anharmonicity in cm-1
         int    nsamples=1 ;             // number of samples
         double sample_every=10.;        // how often to take a new sample in ps
         int    nchrom=1;                // number of uncoupled chromophores to consider
-        int    length=0;                // number of frames in trajectory files
-        int    t1_npoints;              // number of data points for t1
-        int    t3_npoints;              // number of data points for t3
+        int    trjlen=0;                // number of frames in trajectory files
+        int    fftlen=4096;             // number of data points for 1 dimension of fft
+        int    t1t3_npoints;            // number of data points for t1 and t3
         double window0 = 1400;          // lower limit of spectral window in cm-1
         double window1 = 1700;          // upper limit if spectral window in cm-1
         double shift;                   // reference frequency in cm-1
@@ -80,7 +79,7 @@ class IR2D
         int writeR2D();
         int write1Dfft();
         int write2DRabs();
-        int write2Dout( complex<double> *data, string fn, string which, int length);
+        int write2Dout( complex<double> *data, string fn, string which, int n);
         double dot3( vec3 x, vec3 y );
 };
 #endif

@@ -32,11 +32,11 @@ IR2D::IR2D( string _inpf_ )
     dipole_t1       = new vec3[nchrom]();
     dipole_t2       = new vec3[nchrom]();
     dipole_t3       = new vec3[nchrom]();
-    R1D             = new complex<double>[t1_npoints]();
-    R2D_R1          = new complex<double>[t1_npoints*t3_npoints]();
-    R2D_R3          = new complex<double>[t1_npoints*t3_npoints]();
-    R2D_R4          = new complex<double>[t1_npoints*t3_npoints]();
-    R2D_R6          = new complex<double>[t1_npoints*t3_npoints]();
+    R1D             = new complex<double>[t1t3_npoints]();
+    R2D_R1          = new complex<double>[t1t3_npoints*t1t3_npoints]();
+    R2D_R3          = new complex<double>[t1t3_npoints*t1t3_npoints]();
+    R2D_R4          = new complex<double>[t1t3_npoints*t1t3_npoints]();
+    R2D_R6          = new complex<double>[t1t3_npoints*t1t3_npoints]();
     eint_t1         = new complex<double>[nchrom]();
     eint_t3         = new complex<double>[nchrom]();
 
@@ -99,17 +99,17 @@ int IR2D::readParam( string _inpf_ )
         // save parameters as class variable
         if      ( para.compare("energy_file") == 0 )  _efile_      = value;
         else if ( para.compare("dipole_file") == 0 )  _dfile_      = value;
-        else if ( para.compare("length") == 0 )       length       = stoi(value);
+        else if ( para.compare("trjlen") == 0 )       trjlen       = stoi(value);
         else if ( para.compare("output_file") == 0 )  _ofile_      = value;
         else if ( para.compare("time_step") == 0 )    dt           = stof(value);
-        else if ( para.compare("t1_max") == 0 )       t1_max       = stof(value);
-        else if ( para.compare("t3_max") == 0 )       t3_max       = stof(value);
+        else if ( para.compare("t1t3_max") == 0 )     t1t3_max     = stof(value);
         else if ( para.compare("t2") == 0 )           t2           = stof(value);
         else if ( para.compare("lifetimet1") == 0 )   lifetime_T1  = stof(value);
         else if ( para.compare("anharm") == 0 )       anharm       = stof(value);
         else if ( para.compare("nsamples") == 0 )     nsamples     = stoi(value);
         else if ( para.compare("sample_every") == 0 ) sample_every = stof(value);
         else if ( para.compare("nchrom") == 0 )       nchrom       = stoi(value);
+        else if ( para.compare("fftlen") == 0 )       fftlen       = stoi(value);
         else if ( para.compare("window0") == 0 )      window0      = stof(value);
         else if ( para.compare("window1") == 0 )      window1      = stof(value);
         else cerr << "\tWARNING:: parameter " << para << " is not recognized." << endl;
@@ -119,30 +119,30 @@ int IR2D::readParam( string _inpf_ )
     // some output to confirm parameters
     tellParam<string>( "energy_file", _efile_ );
     tellParam<string>( "dipole_file", _dfile_ );
-    tellParam<int>( "length", length );
+    tellParam<int>( "trjlen", trjlen );
     tellParam<string>( "output_file", _ofile_ );
     tellParam<double>( "time_step", dt );
-    tellParam<double>( "t1_max", t1_max );
-    tellParam<double>( "t3_max", t3_max );
+    tellParam<double>( "t1t3_max", t1t3_max );
     tellParam<double>( "t2", t2 );
     tellParam<double>( "lifetimeT1", lifetime_T1 );
     tellParam<double>( "anharm", anharm );
     tellParam<int>( "nsamples", nsamples );
     tellParam<int>( "sample_every", sample_every );
     tellParam<int>( "nchrom", nchrom );
+    tellParam<int>( "fftlen", fftlen );
     tellParam<double>( "window0", window0 );
     tellParam<double>( "window1", window1 );
     cout << ">>> Done reading simulation parameters from " << _inpf_ << endl;
 
-    if ( length*dt < (nsamples-1)*sample_every + (t1_max + t3_max + t2) ){
+    if ( trjlen*dt < (nsamples-1)*sample_every + (2*t1t3_max + t2) ){
         cout << "WARNING:: The given trajectory length is not long enough.\n" << 
-                      "\t  Check input file. Aborting." << endl;
+                      "\t  Must be " <<  (nsamples-1)*sample_every + (2*t1t3_max + t2) << 
+                      " frames long.\n\t  Check input file. Aborting." << endl;
         exit(EXIT_FAILURE);
     }
 
-    // set number of points in response functions based on t1_max and dt
-    t1_npoints = static_cast<int>(t1_max/dt);
-    t3_npoints = static_cast<int>(t3_max/dt);
+    // set number of points in response functions based on t1t3_max and dt
+    t1t3_npoints = static_cast<int>(t1t3_max/dt);
 
     // shift energies by mean of spectral window to avoid high frequency oscillations
     shift = 0.5*(window1 + window0);
@@ -381,7 +381,7 @@ int IR2D::writeR1D()
     cout << ">>> Writing " << fn << "." << endl;
 
     ofile << "# time (ps) Real Imag" << endl;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
         ofile << t1 * dt << " " << R1D[t1].real() << " " << R1D[t1].imag() << endl;
     }
     ofile.close();
@@ -405,12 +405,12 @@ int IR2D::writeR2D()
 
     ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
     ofile << "# t1 (ps) t3 (ps) Real Imag" << endl;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
             // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
             // The experiment can only see all rephasing or non-rephasing, not the individual
             // response functions, so add them here.
-            Rtmp = 2.*R2D_R1[t1 * t3_npoints + t3] + R2D_R3[t1 * t3_npoints + t3];
+            Rtmp = 2.*R2D_R1[t1 * t1t3_npoints + t3] + R2D_R3[t1 * t1t3_npoints + t3];
             ofile << t1 * dt << " " << t3 * dt << " " << Rtmp.real() << " " << Rtmp.imag() << endl;
         }
     }
@@ -424,12 +424,12 @@ int IR2D::writeR2D()
 
     ofile << "# Non-rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
     ofile << "# t1 (ps) t3 (ps) Real Imag" << endl;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
             // see Hamm and Zanni eq 4.23 and note R4=R5, hence the factor of 2
             // The experiment can only see all rephasing or non-rephasing, not the individual
             // response functions, so add them here.
-            Rtmp = 2.*R2D_R4[t1 * t3_npoints + t3] + R2D_R6[t1 * t3_npoints + t3];
+            Rtmp = 2.*R2D_R4[t1 * t1t3_npoints + t3] + R2D_R6[t1 * t1t3_npoints + t3];
             ofile << t1 * dt << " " << t3 * dt << " " << Rtmp.real() << " " << Rtmp.imag() << endl;
         }
     }
@@ -443,45 +443,46 @@ int IR2D::write1Dfft()
 {
     string fn;
     ofstream ofile;
-    const int length=4096;
     complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
     double freq, scale;
     int t1, i;
 
     // allocate arrays
-    fftIn  = new complex<double>[length]();
-    fftOut = new complex<double>[length]();
-    res    = new complex<double>[length]();
+    fftIn  = new complex<double>[fftlen]();
+    fftOut = new complex<double>[fftlen]();
+    res    = new complex<double>[fftlen]();
 
     // scale fftOut to keep total area of the spectrum conserved and normalize
-    // by root(length) since FFTW3 does not
+    // by root(fftlen) since FFTW3 does not
     // the -1 makes it look like absorption spectrum
-    scale = -dt*length/(2.*PI*HBAR*sqrt(length));
+    scale = -dt*fftlen/(2.*PI*HBAR*sqrt(fftlen));
      
     // do fft
-    plan = fftw_plan_dft_1d( length, reinterpret_cast<fftw_complex*>(fftIn), \
+    plan = fftw_plan_dft_1d( fftlen, reinterpret_cast<fftw_complex*>(fftIn), \
                                      reinterpret_cast<fftw_complex*>(fftOut),\
                                      FFTW_BACKWARD, FFTW_ESTIMATE );
     
     // See Eq 4.8 from Hamm and Zanni -- Absorptive part
-    for ( i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+    for ( i = 0; i < fftlen ; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
         fftIn[t1]          = img*R1D[t1];
-        fftIn[length-1-t1] = conj(img*R1D[t1]);
+        if ( t1 == 0 ) continue; // dont take hermitian at t=0
+        fftIn[fftlen-t1] = conj(img*R1D[t1]);
     }
     fftw_execute(plan); 
-    for ( t1 = 0; t1 < length; t1 ++ ) res[t1].real(fftOut[t1].real());
+    for ( t1 = 0; t1 < fftlen; t1 ++ ) res[t1].real(fftOut[t1].real());
 
     // See Eq 4.11 from Hamm and Zanni -- Dispersive part
-    for ( i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
+    for ( i = 0; i < fftlen ; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
         fftIn[t1]          = -R1D[t1];
-        fftIn[length-1-t1] = conj(-R1D[t1]);
+        if ( t1 == 0 ) continue; // dont take hermitian at t=0
+        fftIn[fftlen-t1] = conj(-R1D[t1]);
     }
     fftw_execute(plan); 
     fftw_destroy_plan(plan);
-    for ( t1 = 0; t1 < length; t1 ++ ) res[t1].imag(fftOut[t1].real());
+    for ( t1 = 0; t1 < fftlen; t1 ++ ) res[t1].imag(fftOut[t1].real());
 
     // write file
     fn = _ofile_+"-R1Dw.dat";
@@ -491,17 +492,17 @@ int IR2D::write1Dfft()
     ofile << "# Frequency (cm-1) Absorptive Dispersive" << endl;
 
     // negative frequencies are stored at the end of the fftOut array
-    for ( i = length/2; i < length; i ++ )
+    for ( i = fftlen/2; i < fftlen; i ++ )
     {
         // get frequency in wavenumber, add back the shift
-        freq   = 2.*PI*HBAR*(i-length)/(dt*length) + shift;
+        freq   = 2.*PI*HBAR*(i-fftlen)/(dt*fftlen) + shift;
         if ( freq < window0 or freq > window1 ) continue;
         ofile << freq << " " << scale*res[i].real() << " " << scale*res[i].imag() << endl;
     }
     // positive frequencies are stored at the beginning of fftOut
-    for ( i = 0; i < length/2; i ++ ){
+    for ( i = 0; i < fftlen/2; i ++ ){
         // get frequency in wavenumber, add back the shift
-        freq   = 2.*PI*HBAR*i/(dt*length) + shift;
+        freq   = 2.*PI*HBAR*i/(dt*fftlen) + shift;
         if ( freq < window0 or freq > window1 ) continue;
         ofile << freq << " " << scale*res[i].real() << " " << scale*res[i].imag() << endl;
     }
@@ -519,70 +520,69 @@ int IR2D::write2DRabs()
 // write the purely absorptive 2D IR spectrum
 {
     string fn;
-    const int length=4096;
     complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
     int t1, t3, i, j;
 
     // allocate arrays
-    fftIn  = new complex<double>[length*length]();
-    fftOut = new complex<double>[length*length]();
-    res    = new complex<double>[length*length]();
+    fftIn  = new complex<double>[fftlen*fftlen]();
+    fftOut = new complex<double>[fftlen*fftlen]();
+    res    = new complex<double>[fftlen*fftlen]();
 
     // do fft plan
-    plan = fftw_plan_dft_2d( length, length, \
+    plan = fftw_plan_dft_2d( fftlen, fftlen, \
                              reinterpret_cast<fftw_complex*>(fftIn), \
                              reinterpret_cast<fftw_complex*>(fftOut),\
                              FFTW_BACKWARD, FFTW_ESTIMATE );
     
     // fourier transform rephasing response functions, see Hamm and Zanni eq 4.31
     // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
-    for ( i = 0; i < length*length; i ++ ) fftIn[i] = complex_zero;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftIn[ t1*length + t3 ] = 2.*img*R2D_R1[ t1*t3_npoints + t3 ]\
-                                      +  img*R2D_R3[ t1*t3_npoints + t3 ];
+    for ( i = 0; i < fftlen*fftlen; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
+            fftIn[ t1*fftlen + t3 ] = 2.*img*R2D_R1[ t1*t1t3_npoints + t3 ]\
+                                      +  img*R2D_R3[ t1*t1t3_npoints + t3 ];
         }
     }
     fftw_execute(plan);
     fn=_ofile_+"-RparIw.dat";
-    if ( write2Dout( fftOut, fn, "rephasing", length ) != IR2DOK ) return 1;
+    if ( write2Dout( fftOut, fn, "rephasing", fftlen ) != IR2DOK ) return 1;
 
     // Save rephasing contribution to purly absorptive spectrum
     // here we map w1 to -w1
     // See Hamm and Zanni eq 4.36
-    for ( i = 0; i < length; i ++ ){
-        for ( j = 0; j < length; j ++ ){
-            res[ i*length + j ] = fftOut[ (length - i)*length + j ];
+    for ( i = 0; i < fftlen; i ++ ){
+        for ( j = 0; j < fftlen; j ++ ){
+            res[ i*fftlen + j ] = fftOut[ (fftlen - i)*fftlen + j ];
         }
     }
 
     // fourier transform non-rephasing response functions, see Hamm and Zanni eq 4.31
     // see Hamm and Zanni eq 4.23 and note R4=R5, hence the factor of 2
-    for ( i = 0; i < length*length; i ++ ) fftIn[i] = complex_zero;
-    for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
-        for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftIn[ t1*length + t3 ] = 2.*img*R2D_R4[ t1*t3_npoints + t3 ]\
-                                      +  img*R2D_R6[ t1*t3_npoints + t3 ];
+    for ( i = 0; i < fftlen*fftlen; i ++ ) fftIn[i] = complex_zero;
+    for ( t1 = 0; t1 < t1t3_npoints; t1 ++ ){
+        for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
+            fftIn[ t1*fftlen + t3 ] = 2.*img*R2D_R4[ t1*t1t3_npoints + t3 ]\
+                                      +  img*R2D_R6[ t1*t1t3_npoints + t3 ];
         }
     }
     fftw_execute(plan);
     fftw_destroy_plan(plan);
     fn=_ofile_+"-RparIIw.dat";
-    if ( write2Dout( fftOut, fn, "non-rephasing", length ) != IR2DOK ) return 1;
+    if ( write2Dout( fftOut, fn, "non-rephasing", fftlen ) != IR2DOK ) return 1;
     
     // Save rephasing contribution to purly absorptive spectrum
     // here w1 goes to w1
     // See Hamm and Zanni eq 4.36
-    for ( i = 0; i < length; i ++ ){
-        for ( j = 0; j < length; j ++ ){
-            res[ i*length + j ] += fftOut[ i*length + j ];
+    for ( i = 0; i < fftlen; i ++ ){
+        for ( j = 0; j < fftlen; j ++ ){
+            res[ i*fftlen + j ] += fftOut[ i*fftlen + j ];
         }
     }
 
     // write purly absorptive spectrum 
     fn=_ofile_+"-RparAbs.dat";
-    if ( write2Dout( res, fn, "rabs", length ) != IR2DOK ) return 1;
+    if ( write2Dout( res, fn, "rabs", fftlen ) != IR2DOK ) return 1;
 
     // delete arrays
     delete [] fftIn;
@@ -593,7 +593,7 @@ int IR2D::write2DRabs()
 }
 
 
-int IR2D::write2Dout( complex<double> *data, string fn, string which, int length )
+int IR2D::write2Dout( complex<double> *data, string fn, string which, int n )
 // write 2D fourier transformed output
 {
     int i, j;
@@ -602,7 +602,7 @@ int IR2D::write2Dout( complex<double> *data, string fn, string which, int length
     ofstream ofile;
 
     // scaling
-    scale = dt*length/(2.*PI*HBAR*sqrt(length));
+    scale = dt*n/(2.*PI*HBAR*sqrt(n));
     scale*= scale;  // since 2D scaling
 
     ofile.open( fn );
@@ -636,37 +636,37 @@ int IR2D::write2Dout( complex<double> *data, string fn, string which, int length
 
     ofile << "# w1 (cm-1) w3 (cm-1) Real Imag" << endl;
     // negative frequencies are stored at the end of data array
-    for ( i = length/2; i < length; i ++ ){
-        w1 = 2.*PI*HBAR*(i-length)/(dt*length) + shift_w1;
+    for ( i = n/2; i < n; i ++ ){
+        w1 = 2.*PI*HBAR*(i-n)/(dt*n) + shift_w1;
         if ( w1 < window0_w1 or w1 > window1_w1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift_w3;
+        for ( j = n/2; j < n; j ++ ){
+            w3 = 2.*PI*HBAR*(j-n)/(dt*n) + shift_w3;
             if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
-            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
-                        << " " << scale*data[i*length+j].imag() << endl;
+            ofile << w1 << " " << w3 << " " << scale*data[i*n+j].real() 
+                        << " " << scale*data[i*n+j].imag() << endl;
         }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift_w3;
+        for ( j = 0; j < n/2; j ++ ){
+            w3 = 2.*PI*HBAR*j/(dt*n) + shift_w3;
             if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
-            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
-                        << " " << scale*data[i*length+j].imag() << endl;
+            ofile << w1 << " " << w3 << " " << scale*data[i*n+j].real() 
+                        << " " << scale*data[i*n+j].imag() << endl;
         }
     }
     // positive frequencies are stored at the beginning of data array
-    for ( i = 0; i < length/2; i ++ ){
-        w1 = 2.*PI*HBAR*i/(dt*length) + shift_w1;
+    for ( i = 0; i < n/2; i ++ ){
+        w1 = 2.*PI*HBAR*i/(dt*n) + shift_w1;
         if ( w1 < window0_w1 or w1 > window1_w1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift_w3;
+        for ( j = n/2; j < n; j ++ ){
+            w3 = 2.*PI*HBAR*(j-n)/(dt*n) + shift_w3;
             if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
-            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
-                  << " " << scale*data[i*length+j].imag() << endl;
+            ofile << w1 << " " << w3 << " " << scale*data[i*n+j].real() 
+                  << " " << scale*data[i*n+j].imag() << endl;
         }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift_w3;
+        for ( j = 0; j < n/2; j ++ ){
+            w3 = 2.*PI*HBAR*j/(dt*n) + shift_w3;
             if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
-            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
-                  << " " << scale*data[i*length+j].imag() << endl;
+            ofile << w1 << " " << w3 << " " << scale*data[i*n+j].real() 
+                  << " " << scale*data[i*n+j].imag() << endl;
         }
     }
     ofile.close();
@@ -715,7 +715,7 @@ int main( int argc, char* argv[] )
         if ( spectrum.readDframe(frame0, "t0" ) != IR2DOK ) exit(EXIT_FAILURE);;
 
         // loop over t1
-        for ( t1 = 0; t1 < spectrum.t1_npoints; t1 ++ ){
+        for ( t1 = 0; t1 < spectrum.t1t3_npoints; t1 ++ ){
             // get frame number for current t1
             frame_t1 = frame0 + t1;
 
@@ -733,7 +733,7 @@ int main( int argc, char* argv[] )
             if ( spectrum.readDframe(frame_t2, "t2") != IR2DOK ) exit(EXIT_FAILURE);
 
             // loop over t3 at current t1
-            for ( t3 = 0; t3 < spectrum.t3_npoints; t3 ++ ){
+            for ( t3 = 0; t3 < spectrum.t1t3_npoints; t3 ++ ){
                 // get frame number for current t3
                 frame_t3 = frame0 + t1 + t2 + t3;
 
@@ -743,25 +743,25 @@ int main( int argc, char* argv[] )
 
                 // calculate 2D response function then save energy in t3_last
                 if ( spectrum.get_eint(t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
-                spectrum.R2D_R1[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R1" );
-                spectrum.R2D_R3[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R3" );
-                spectrum.R2D_R4[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R4" );
-                spectrum.R2D_R6[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R6" );
+                spectrum.R2D_R1[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R1" );
+                spectrum.R2D_R3[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R3" );
+                spectrum.R2D_R4[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R4" );
+                spectrum.R2D_R6[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R6" );
                 memcpy( spectrum.energy_t3_last, spectrum.energy_t3, spectrum.nchrom*sizeof(double) );
             }
-            printProgress( t1+1, spectrum.t1_npoints );
+            printProgress( t1+1, spectrum.t1t3_npoints );
         }
         cerr << endl;
     }
 
     // normalize response functions by number of samples
-    for ( int t1 = 0; t1 < spectrum.t1_npoints; t1 ++ ){
+    for ( int t1 = 0; t1 < spectrum.t1t3_npoints; t1 ++ ){
         spectrum.R1D[t1]/=(1.*spectrum.nsamples);
-        for ( t3 = 0; t3 < spectrum.t3_npoints; t3 ++ ){
-            spectrum.R2D_R1[ t1 * spectrum.t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
-            spectrum.R2D_R3[ t1 * spectrum.t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
-            spectrum.R2D_R4[ t1 * spectrum.t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
-            spectrum.R2D_R6[ t1 * spectrum.t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
+        for ( t3 = 0; t3 < spectrum.t1t3_npoints; t3 ++ ){
+            spectrum.R2D_R1[ t1 * spectrum.t1t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
+            spectrum.R2D_R3[ t1 * spectrum.t1t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
+            spectrum.R2D_R4[ t1 * spectrum.t1t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
+            spectrum.R2D_R6[ t1 * spectrum.t1t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
         }
     }
 
