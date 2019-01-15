@@ -474,6 +474,8 @@ int IR2D::write1Dfft()
     }
     ofile.close();
 
+    fftw_destroy_plan(plan);
+    
     // delete arrays
     delete [] fftIn;
     delete [] fftOut;
@@ -486,13 +488,10 @@ int IR2D::write2DRabs()
 // write the purely absorptive 2D IR spectrum
 {
     string fn;
-    ofstream ofile;
-    const int length=1024;
-    complex<double> *fftIn, *fftOut, *res, *rabs;
-    complex<double> fftInTmp, Rtmp;
+    const int length=4096;
+    complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
-    double w1, w3, scale;
-    int t1, t3, i, j, nx, resnx;
+    int t1, t3, i, j;
 
     // allocate arrays
     fftIn  = new complex<double>[length*length]();
@@ -504,210 +503,55 @@ int IR2D::write2DRabs()
                              reinterpret_cast<fftw_complex*>(fftIn), \
                              reinterpret_cast<fftw_complex*>(fftOut),\
                              FFTW_BACKWARD, FFTW_ESTIMATE );
-    scale = dt*length/(2.*PI*HBAR*sqrt(length));
-    scale*= scale;                              // since 2D scaling
     
     // fourier transform rephasing response functions, see Hamm and Zanni eq 4.31
     // see Hamm and Zanni eq 4.23 and note R1=R2, hence the factor of 2
     for ( i = 0; i < length*length; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
         for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftInTmp = 2.*img*R2D_R1[ t1*t3_npoints + t3 ]\
-                       +  img*R2D_R3[ t1*t3_npoints + t3 ];
-            fftIn[ t1*length + t3 ] = fftInTmp;
+            fftIn[ t1*length + t3 ] = 2.*img*R2D_R1[ t1*t3_npoints + t3 ]\
+                                      +  img*R2D_R3[ t1*t3_npoints + t3 ];
         }
     }
     fftw_execute(plan);
-
-    // write rephasing response function
     fn=_ofile_+"-RparIw.dat";
-    ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
-    cout << ">>> Writing " << fn << "." << endl;
-    ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
-    ofile << "# w1 (cm-1) w3 (cm-1) Real Imag" << endl;
-    // TODO:: Write this as a function to clean up the code a little
-    // negative frequencies are stored at the end of the fftOut array
-    for ( i = length/2; i < length; i ++ ){
-        w1 = 2.*PI*HBAR*(i-length)/(dt*length) - shift;
-        if ( w1 > -window0 or w1 < -window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing, negate w1
-            // see Hamm and Zanni Eq 4.36
-            resnx = (length-i)*length + j;
-            res[resnx] = fftOut[nx];
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing, negate w1
-            // see Hamm and Zanni Eq 4.36
-            resnx = (length-i)*length + j;
-            res[resnx] = fftOut[nx];
+    write2Dout( fftOut, fn, "rephasing", length );
+
+    // Save rephasing contribution to purly absorptive spectrum
+    // here we map w1 to -w1
+    // See Hamm and Zanni eq 4.36
+    for ( i = 0; i < length; i ++ ){
+        for ( j = 0; j < length; j ++ ){
+            res[ i*length + j ] = fftOut[ (length - i)*length + j ];
         }
     }
-    // positive frequencies are stored at the beginning of fftOut
-    for ( i = 0; i < length/2; i ++ ){
-        w1 = 2.*PI*HBAR*i/(dt*length) - shift;
-        if ( w1 > -window0 or w1 < -window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing, negate w1
-            // see Hamm and Zanni Eq 4.36
-            resnx = (length-i)*length + j;
-            res[resnx] = fftOut[nx];
-
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx= i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing, negate w1
-            // see Hamm and Zanni Eq 4.36
-            resnx = (length-i)*length + j;
-            res[resnx] = fftOut[nx];
-        }
-    }
-    ofile.close();
-
 
     // fourier transform non-rephasing response functions, see Hamm and Zanni eq 4.31
     // see Hamm and Zanni eq 4.23 and note R4=R5, hence the factor of 2
     for ( i = 0; i < length*length; i ++ ) fftIn[i] = complex_zero;
     for ( t1 = 0; t1 < t1_npoints; t1 ++ ){
         for ( t3 = 0; t3 < t3_npoints; t3 ++ ){
-            fftInTmp = 2.*img*R2D_R4[ t1*t3_npoints + t3 ]\
-                       +  img*R2D_R6[ t1*t3_npoints + t3 ];
-            fftIn[ t1*length + t3 ] = fftInTmp;
+            fftIn[ t1*length + t3 ] = 2.*img*R2D_R4[ t1*t3_npoints + t3 ]\
+                                      +  img*R2D_R6[ t1*t3_npoints + t3 ];
         }
     }
     fftw_execute(plan);
-
-    // write non-rephasing response function
+    fftw_destroy_plan(plan);
     fn=_ofile_+"-RparIIw.dat";
-    ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
-    cout << ">>> Writing " << fn << "." << endl;
-    ofile << "# Non-rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
-    ofile << "# w1 (cm-1) w3 (cm-1) Real Imag" << endl;
-    // negative frequencies are stored at the end of the fftOut array
-    for ( i = length/2; i < length; i ++ ){
-        w1 = 2.*PI*HBAR*(i-length)/(dt*length) + shift;
-        if ( w1 < window0 or w1 > window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing
-            // see Hamm and Zanni Eq 4.36
-            resnx = i*length + j;
-            res[resnx] += fftOut[nx];
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing
-            // see Hamm and Zanni Eq 4.36
-            resnx = i*length + j;
-            res[resnx] += fftOut[nx];
+    write2Dout( fftOut, fn, "non-rephasing", length );
+    
+    // Save rephasing contribution to purly absorptive spectrum
+    // here w1 goes to w1
+    // See Hamm and Zanni eq 4.36
+    for ( i = 0; i < length; i ++ ){
+        for ( j = 0; j < length; j ++ ){
+            res[ i*length + j ] += fftOut[ i*length + j ];
         }
     }
-    // positive frequencies are stored at the beginning of fftOut
-    for ( i = 0; i < length/2; i ++ ){
-        w1 = 2.*PI*HBAR*i/(dt*length) + shift;
-        if ( w1 < window0 or w1 > window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing
-            // see Hamm and Zanni Eq 4.36
-            resnx = i*length + j;
-            res[resnx] += fftOut[nx];
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx= i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*fftOut[nx].real() 
-                  << " " << scale*fftOut[nx].imag() << endl;
-            // save purly absorptive contribution from rephasing
-            // see Hamm and Zanni Eq 4.36
-            resnx = i*length + j;
-            res[resnx] += fftOut[nx];
-        }
-    }
-    ofile.close();
-
 
     // write purly absorptive spectrum 
-    // See Hamm and Zanni eq 4.36
     fn=_ofile_+"-RparAbs.dat";
-    ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
-    cout << ">>> Writing " << fn << "." << endl;
-    ofile << "# Purly absorptive parallel ZZZZ polarized spectrum, t2 = " << t2 << endl;
-    ofile << "# w1 (cm-1) w3 (cm-1) Real Imag" << endl;
-    // negative frequencies are stored at the end of the fftOut array
-    for ( i = length/2; i < length; i ++ ){
-        w1 = 2.*PI*HBAR*(i-length)/(dt*length) + shift;
-        if ( w1 < window0 or w1 > window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*res[nx].real() 
-                  << " " << scale*res[nx].imag() << endl;
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*res[nx].real() 
-                  << " " << scale*res[nx].imag() << endl;
-        }
-    }
-    // positive frequencies are stored at the beginning of fftOut
-    for ( i = 0; i < length/2; i ++ ){
-        w1 = 2.*PI*HBAR*i/(dt*length) + shift;
-        if ( w1 < window0 or w1 > window1 ) continue;
-        for ( j = length/2; j < length; j ++ ){
-            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx = i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*res[nx].real() 
-                  << " " << scale*res[nx].imag() << endl;
-        }
-        for ( j = 0; j < length/2; j ++ ){
-            w3 = 2.*PI*HBAR*j/(dt*length) + shift;
-            if ( w3 < window0 or w3 > window1 ) continue;
-            nx= i*length + j;
-            ofile << w1 << " " << w3 << " " << scale*res[nx].real() 
-                  << " " << scale*res[nx].imag() << endl;
-        }
-    }
-    ofile.close();
+    write2Dout( res, fn, "rabs", length );
 
     // delete arrays
     delete [] fftIn;
@@ -716,6 +560,89 @@ int IR2D::write2DRabs()
 
     return IR2DOK;
 }
+
+
+int IR2D::write2Dout( complex<double> *data, string fn, string which, int length )
+// write 2D fourier transformed output
+{
+    int i, j;
+    double shift_w1, shift_w3, window0_w1, window0_w3, window1_w1, window1_w3;
+    double scale, w1, w3;
+    ofstream ofile;
+
+    // scaling
+    scale = dt*length/(2.*PI*HBAR*sqrt(length));
+    scale*= scale;  // since 2D scaling
+
+    ofile.open( fn );
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    cout << ">>> Writing " << fn << "." << endl;
+
+    shift_w1    = shift;
+    shift_w3    = shift;
+    window0_w1 = window0;
+    window1_w1 = window1;
+    window0_w3 = window0;
+    window1_w3 = window1;
+
+    if ( which.compare("rephasing") == 0 ){
+        ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
+        shift_w1   = -shift;
+        window0_w1 = -window1;
+        window1_w1 = -window0;
+    }
+    else if ( which.compare("non-rephasing") == 0 ){
+        ofile << "# Non-rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
+    }
+    else if ( which.compare("rabs") == 0 ){
+        ofile << "# Pure parallel ZZZZ polarized absorption, t2 = " << t2 << endl;
+    }
+    else{
+        cout << "ERROR:: write2Dout which= " << which << " unknown." << endl;
+        return 1;
+    }
+
+    ofile << "# w1 (cm-1) w3 (cm-1) Real Imag" << endl;
+    // negative frequencies are stored at the end of data array
+    for ( i = length/2; i < length; i ++ ){
+        w1 = 2.*PI*HBAR*(i-length)/(dt*length) + shift_w1;
+        if ( w1 < window0_w1 or w1 > window1_w1 ) continue;
+        for ( j = length/2; j < length; j ++ ){
+            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift_w3;
+            if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
+            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
+                        << " " << scale*data[i*length+j].imag() << endl;
+        }
+        for ( j = 0; j < length/2; j ++ ){
+            w3 = 2.*PI*HBAR*j/(dt*length) + shift_w3;
+            if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
+            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
+                        << " " << scale*data[i*length+j].imag() << endl;
+        }
+    }
+    // positive frequencies are stored at the beginning of data array
+    for ( i = 0; i < length/2; i ++ ){
+        w1 = 2.*PI*HBAR*i/(dt*length) + shift_w1;
+        if ( w1 < window0_w1 or w1 > window1_w1 ) continue;
+        for ( j = length/2; j < length; j ++ ){
+            w3 = 2.*PI*HBAR*(j-length)/(dt*length) + shift_w3;
+            if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
+            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
+                  << " " << scale*data[i*length+j].imag() << endl;
+        }
+        for ( j = 0; j < length/2; j ++ ){
+            w3 = 2.*PI*HBAR*j/(dt*length) + shift_w3;
+            if ( w3 < window0_w3 or w3 > window1_w3 ) continue;
+            ofile << w1 << " " << w3 << " " << scale*data[i*length+j].real() 
+                  << " " << scale*data[i*length+j].imag() << endl;
+        }
+    }
+    ofile.close();
+
+    return 0;
+}
+
+
 
 int main( int argc, char* argv[] )
 {

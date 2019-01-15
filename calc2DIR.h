@@ -77,6 +77,7 @@ class IR2D
         int writeR2D();
         int write1Dfft();
         int write2DRabs();
+        int write2Dout( complex<double> *data, string fn, string which, int length);
         double dot3( vec3 x, vec3 y );
 };
 #endif
