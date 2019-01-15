@@ -14,7 +14,7 @@ using namespace std;
 IR2D::IR2D( string _inpf_ )
 // Default Constructor
 {
-    int err, lengthTmp;
+    int err;
     string line;
 
     // read input file
@@ -99,6 +99,7 @@ int IR2D::readParam( string _inpf_ )
         // save parameters as class variable
         if      ( para.compare("energy_file") == 0 )  _efile_      = value;
         else if ( para.compare("dipole_file") == 0 )  _dfile_      = value;
+        else if ( para.compare("length") == 0 )       length       = stoi(value);
         else if ( para.compare("output_file") == 0 )  _ofile_      = value;
         else if ( para.compare("time_step") == 0 )    dt           = stof(value);
         else if ( para.compare("t1_max") == 0 )       t1_max       = stof(value);
@@ -118,6 +119,7 @@ int IR2D::readParam( string _inpf_ )
     // some output to confirm parameters
     tellParam<string>( "energy_file", _efile_ );
     tellParam<string>( "dipole_file", _dfile_ );
+    tellParam<int>( "length", length );
     tellParam<string>( "output_file", _ofile_ );
     tellParam<double>( "time_step", dt );
     tellParam<double>( "t1_max", t1_max );
@@ -132,6 +134,11 @@ int IR2D::readParam( string _inpf_ )
     tellParam<double>( "window1", window1 );
     cout << ">>> Done reading simulation parameters from " << _inpf_ << endl;
 
+    if ( length*dt < (nsamples-1)*sample_every + (t1_max + t3_max + t2) ){
+        cout << "WARNING:: The given trajectory length is not long enough.\n" << 
+                      "\t  Check input file. Aborting." << endl;
+        exit(EXIT_FAILURE);
+    }
 
     // set number of points in response functions based on t1_max and dt
     t1_npoints = static_cast<int>(t1_max/dt);
@@ -144,7 +151,7 @@ int IR2D::readParam( string _inpf_ )
     // set T2 lifetime as 2*T1 (see Hamm and Zanni p29 for discussion)
     // also see Liang and Jansen JCTC 2012 eq 14 and 16
     lifetime_T2 = 2*lifetime_T1;
-    cout << ">>> Setting T2 to 2*T1: " << lifetime_T2 << " ps." << endl;
+    cout << ">>> Setting T2 to 2T1: " << lifetime_T2 << " ps." << endl;
 
     return IR2DOK;
 }
@@ -183,7 +190,10 @@ int IR2D::readEframe( int frame, string t )
         // set to variable depending on t value
         if ( t.compare("t1") == 0 )      energy_t1[i] = energyTmp[col] - shift;
         else if ( t.compare("t3") == 0 ) energy_t3[i] = energyTmp[col] - shift;
-        else return 1;
+        else{
+            cout << "ERROR:: IR2D::readEframe t= " << t << " unknown." << endl;
+            return 1;
+        }
         col += nchrom-i;
     }
 
@@ -211,7 +221,10 @@ int IR2D::readDframe( int frame, string t )
             else if ( t.compare("t1") == 0 ) dipole_t1[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else if ( t.compare("t2") == 0 ) dipole_t2[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else if ( t.compare("t3") == 0 ) dipole_t3[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else return 1;
+            else{
+                cout << "ERROR: IR2D::readDframe t= " << t << " unknown." << endl;
+                return 1;
+            }
         }
     }
 
@@ -244,8 +257,9 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
     double mu;
     int chrom;
     complex<double> R2Dtmp;
-    double lifetime_T2_12 = 2.*lifetime_T1/3.;// Note that Jansen's NISE code sets T2 lifetimes equal
-    lifetime_T2_12 = lifetime_T2;
+    double lifetime_T2_12 = 2.*lifetime_T1/3.;// See Hamm and Zanni eq 4.21
+    lifetime_T2_12 = lifetime_T2;             // Note that Jansen's NISE code sets T2 lifetimes equal 
+                                              // I do here for consistency with that program
 
     R2Dtmp = complex_zero;
     for ( chrom = 0; chrom < nchrom; chrom ++ ){
@@ -257,31 +271,50 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 
         // average the response function over all of the chromophores then return
         if ( which.compare("R1") == 0 ){ // rephasing
+                      // dipole
+                      // first pulse oscillating in 01 coherence
+                      // second pulse population relaxation (note t2 is in ps already)
+                      // third pulse oscillating in 01 coherence
             R2Dtmp += img*mu* 
-                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    // first pulse oscillating in 01 coherence
-                                          *exp(-t2   /lifetime_T1)    // second pulse population relaxation (note t2 is in ps already)
-                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2);   // third pulse oscillating in 01 coherence
+                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)
+                                          *exp(-t2   /lifetime_T1)
+                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2);
         }
         else if ( which.compare("R4") == 0 ){ // non-rephasing
+                      // dipole
+                      // first pulse oscillating in 01 coherence
+                      // second pulse population relaxation (note t2 is in ps already)
+                      // third pulse oscillating in 01 coherence
             R2Dtmp += img*mu*  
-                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)          // first pulse oscillating in 01 coherence
-                                    *exp(-t2   /lifetime_T1)          // second pulse population relaxation (note t2 is in ps already)
-                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2);         // third pulse oscillating in 01 coherence
+                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)
+                                    *exp(-t2   /lifetime_T1)
+                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2);
         }
         else if ( which.compare("R3") == 0 ){ // rephasing
-            R2Dtmp -= 2.*img*mu*                                      // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
-                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    // first pulse oscillating in 01 coherence
-                                          *exp(-t2   /lifetime_T1)    // second pulse population relaxation (note t2 is in ps already)
-                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12) // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
-                          *exp(img*(dt*t3)*anharm/HBAR);              // include anharmonicity term for the 12 transition
-                            
+            // dipole, the factor of 2 assumes the transition dipoles scale 
+            // like a harmonic oscillator (see p 68 of Hamm and Zanni)
+            // first pulse oscillating in 01 coherence
+            // second pulse population relaxation (note t2 is in ps already)
+            // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
+            // include anharmonicity term for the 12 transition
+            R2Dtmp -= 2.*img*mu*                                      
+                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    
+                                          *exp(-t2   /lifetime_T1)    
+                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12) 
+                          *exp(img*(dt*t3)*anharm/HBAR);              
         }
         else if ( which.compare("R6") == 0 ){ // non-rephasing
-            R2Dtmp -= 2.*img*mu*                                      // the factor of 2 assumes the transition dipoles scale like a harmonic oscillator (see p 68 of Hamm and Zanni)
-                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)          // first pulse oscillating in 01 coherence
-                                    *exp(-t2   /lifetime_T1)          // second pulse population relaxation (note t2 is in ps already)
-                    *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12)       // third pulse oscillating in 12 coherence -- 
-                    *exp(img*(dt*t3)*anharm/HBAR);                    // include anharmonicity term for the 12 transition
+            // dipole, the factor of 2 assumes the transition dipoles scale 
+            // like a harmonic oscillator (see p 68 of Hamm and Zanni)
+            // first pulse oscillating in 01 coherence
+            // second pulse population relaxation (note t2 is in ps already)
+            // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
+            // include anharmonicity term for the 12 transition
+            R2Dtmp -= 2.*img*mu*                                     
+                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)         
+                                    *exp(-t2   /lifetime_T1)         
+                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2_12)      
+                     *exp(img*(dt*t3)*anharm/HBAR);                  
         }
         else {
             cout << "ERROR:: IR2D::getR2D which= " << which << " is unknown. Aborting." << endl;
@@ -291,8 +324,6 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 
     return R2Dtmp/(1.*nchrom);
 }
-
-
 
 int IR2D::get_eint( int t, string which )
 // integral from t0 to t1 for linear and third order response functions of 01 frequency
@@ -325,8 +356,8 @@ int IR2D::get_eint( int t, string which )
         }
     }
     else{
-        cout << "ERROR:: IR2D::get_eint which= " << which << " unknown. Aborting." << endl;
-        exit(EXIT_FAILURE);
+        cout << "ERROR:: IR2D::get_eint which= " << which << " unknown." << endl;
+        return 1;
     }
     
     return IR2DOK;
@@ -346,7 +377,7 @@ int IR2D::writeR1D()
     int t1;
 
     ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); return 1;}
     cout << ">>> Writing " << fn << "." << endl;
 
     ofile << "# time (ps) Real Imag" << endl;
@@ -369,7 +400,7 @@ int IR2D::writeR2D()
     // write rephasing response function
     fn=_ofile_+"-RparI.dat";
     ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); return 1;}
     cout << ">>> Writing " << fn << "." << endl;
 
     ofile << "# Rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
@@ -388,7 +419,7 @@ int IR2D::writeR2D()
     // write non-rephasing response function
     fn=_ofile_+"-RparII.dat";
     ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); return 1;}
     cout << ">>> Writing " << fn << "." << endl;
 
     ofile << "# Non-rephasing parallel ZZZZ polarized response function, t2 = " << t2 << endl;
@@ -407,7 +438,6 @@ int IR2D::writeR2D()
     return IR2DOK;
 }
 
-
 int IR2D::write1Dfft()
 // write fft of R1D
 {
@@ -424,6 +454,11 @@ int IR2D::write1Dfft()
     fftOut = new complex<double>[length]();
     res    = new complex<double>[length]();
 
+    // scale fftOut to keep total area of the spectrum conserved and normalize
+    // by root(length) since FFTW3 does not
+    // the -1 makes it look like absorption spectrum
+    scale = -dt*length/(2.*PI*HBAR*sqrt(length));
+     
     // do fft
     plan = fftw_plan_dft_1d( length, reinterpret_cast<fftw_complex*>(fftIn), \
                                      reinterpret_cast<fftw_complex*>(fftOut),\
@@ -435,7 +470,8 @@ int IR2D::write1Dfft()
         fftIn[t1]          = img*R1D[t1];
         fftIn[length-1-t1] = conj(img*R1D[t1]);
     }
-    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) res[t1].real(fftOut[t1].real());
+    fftw_execute(plan); 
+    for ( t1 = 0; t1 < length; t1 ++ ) res[t1].real(fftOut[t1].real());
 
     // See Eq 4.11 from Hamm and Zanni -- Dispersive part
     for ( i = 0; i < length ; i ++ ) fftIn[i] = complex_zero;
@@ -443,20 +479,17 @@ int IR2D::write1Dfft()
         fftIn[t1]          = -R1D[t1];
         fftIn[length-1-t1] = conj(-R1D[t1]);
     }
-    fftw_execute(plan); for ( t1 = 0; t1 < length; t1 ++ ) res[t1].imag(fftOut[t1].real());
-    
+    fftw_execute(plan); 
+    fftw_destroy_plan(plan);
+    for ( t1 = 0; t1 < length; t1 ++ ) res[t1].imag(fftOut[t1].real());
+
     // write file
     fn = _ofile_+"-R1Dw.dat";
     ofile.open(fn);
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); return 1;}
     cout << ">>> Writing " << fn << "." << endl;
     ofile << "# Frequency (cm-1) Absorptive Dispersive" << endl;
 
-    // scale intensity to keep total area of the spectrum conserved and normalize
-    // by root(length) since FFTW3 does not
-    // multiply the signal by -1 so it looks like absorption and not signal intensity
-    scale = -dt*length/(2.*PI*HBAR*sqrt(length));
-        
     // negative frequencies are stored at the end of the fftOut array
     for ( i = length/2; i < length; i ++ )
     {
@@ -474,8 +507,6 @@ int IR2D::write1Dfft()
     }
     ofile.close();
 
-    fftw_destroy_plan(plan);
-    
     // delete arrays
     delete [] fftIn;
     delete [] fftOut;
@@ -515,7 +546,7 @@ int IR2D::write2DRabs()
     }
     fftw_execute(plan);
     fn=_ofile_+"-RparIw.dat";
-    write2Dout( fftOut, fn, "rephasing", length );
+    if ( write2Dout( fftOut, fn, "rephasing", length ) != IR2DOK ) return 1;
 
     // Save rephasing contribution to purly absorptive spectrum
     // here we map w1 to -w1
@@ -538,7 +569,7 @@ int IR2D::write2DRabs()
     fftw_execute(plan);
     fftw_destroy_plan(plan);
     fn=_ofile_+"-RparIIw.dat";
-    write2Dout( fftOut, fn, "non-rephasing", length );
+    if ( write2Dout( fftOut, fn, "non-rephasing", length ) != IR2DOK ) return 1;
     
     // Save rephasing contribution to purly absorptive spectrum
     // here w1 goes to w1
@@ -551,7 +582,7 @@ int IR2D::write2DRabs()
 
     // write purly absorptive spectrum 
     fn=_ofile_+"-RparAbs.dat";
-    write2Dout( res, fn, "rabs", length );
+    if ( write2Dout( res, fn, "rabs", length ) != IR2DOK ) return 1;
 
     // delete arrays
     delete [] fftIn;
@@ -575,9 +606,10 @@ int IR2D::write2Dout( complex<double> *data, string fn, string which, int length
     scale*= scale;  // since 2D scaling
 
     ofile.open( fn );
-    if ( ! ofile.is_open() ) { fileOpenErr( fn ); exit(EXIT_FAILURE);}
+    if ( ! ofile.is_open() ) { fileOpenErr( fn ); return 1;}
     cout << ">>> Writing " << fn << "." << endl;
 
+    // assign shifts and spectral window limits
     shift_w1    = shift;
     shift_w3    = shift;
     window0_w1 = window0;
@@ -639,10 +671,17 @@ int IR2D::write2Dout( complex<double> *data, string fn, string which, int length
     }
     ofile.close();
 
-    return 0;
+    return IR2DOK;
 }
 
-
+void printProgress( int currentStep, int totalSteps )
+// print a progress bar to keep updated on usage
+{
+    float percentage = (float) currentStep / (float) totalSteps;
+    int lpad = (int) (percentage*PWID);
+    int rpad = PWID - lpad;
+    fprintf(stderr, "\r [%.*s%*s]%3d%%", lpad, PSTR, rpad, "",(int) (percentage*100));
+}
 
 int main( int argc, char* argv[] )
 {
@@ -670,33 +709,28 @@ int main( int argc, char* argv[] )
     for ( sample = 0; sample < spectrum.nsamples; sample ++ ){
 
         // get frame number, read and save dipole at t0
-        frame0 = static_cast<int>(spectrum.sample_every/spectrum.dt);
-        spectrum.readDframe(frame0, "t0" );
-        cout << sample << "/" << spectrum.nsamples << endl;
-        
+        frame0 = sample*static_cast<int>(spectrum.sample_every/spectrum.dt);
+        fprintf(stderr, "    Now processing sample %d/%d starting at %.2f ps\n", \
+                sample, spectrum.nsamples, frame0*spectrum.dt ); fflush(stderr);
+        if ( spectrum.readDframe(frame0, "t0" ) != IR2DOK ) exit(EXIT_FAILURE);;
+
         // loop over t1
         for ( t1 = 0; t1 < spectrum.t1_npoints; t1 ++ ){
             // get frame number for current t1
             frame_t1 = frame0 + t1;
 
             // read in energy and dipole
-            if ( err = spectrum.readEframe(frame_t1, "t1") != IR2DOK ){ 
-                cout << "ERROR: IR2D::readEframe returned error " << err << endl;
-            }
-            if ( err = spectrum.readDframe(frame_t1, "t1") != IR2DOK ){ 
-                 cout << "ERROR: IR2D::readDframe returned error " << err << endl;
-            }
+            if ( spectrum.readEframe(frame_t1, "t1") != IR2DOK ) exit(EXIT_FAILURE);
+            if ( spectrum.readDframe(frame_t1, "t1") != IR2DOK ) exit(EXIT_FAILURE);
             
             // get exponential integral, calculate 1D response function, and save energy in t1_last
-            spectrum.get_eint( t1, "t1" );
+            if ( spectrum.get_eint( t1, "t1" ) != IR2DOK ) exit(EXIT_FAILURE);
             spectrum.R1D[t1] += spectrum.getR1D( t1 );
             memcpy( spectrum.energy_t1_last, spectrum.energy_t1, spectrum.nchrom*sizeof(double) );
 
             // get frame number and dipole for time t2
             frame_t2 = frame0 + t1 + t2;
-            if ( err = spectrum.readDframe(frame_t2, "t2") != IR2DOK ){ 
-                    cout << "ERROR: IR2D::readDframe returned error " << err << endl;
-            }
+            if ( spectrum.readDframe(frame_t2, "t2") != IR2DOK ) exit(EXIT_FAILURE);
 
             // loop over t3 at current t1
             for ( t3 = 0; t3 < spectrum.t3_npoints; t3 ++ ){
@@ -704,23 +738,20 @@ int main( int argc, char* argv[] )
                 frame_t3 = frame0 + t1 + t2 + t3;
 
                 // read in energy and dipole
-                if ( err = spectrum.readEframe(frame_t3, "t3") != IR2DOK ){ 
-                    cout << "ERROR: IR2D::readEframe returned error " << err << endl;
-                }
-                if ( err = spectrum.readDframe(frame_t3, "t3") != IR2DOK ){ 
-                    cout << "ERROR: IR2D::readDframe returned error " << err << endl;
-                }
+                if ( spectrum.readEframe(frame_t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
+                if ( spectrum.readDframe(frame_t3, "t3") != IR2DOK ) exit(EXIT_FAILURE); 
 
                 // calculate 2D response function then save energy in t3_last
-                spectrum.get_eint(t3, "t3");
+                if ( spectrum.get_eint(t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
                 spectrum.R2D_R1[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R1" );
                 spectrum.R2D_R3[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R3" );
                 spectrum.R2D_R4[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R4" );
                 spectrum.R2D_R6[ t1 * spectrum.t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R6" );
                 memcpy( spectrum.energy_t3_last, spectrum.energy_t3, spectrum.nchrom*sizeof(double) );
-
             }
+            printProgress( t1+1, spectrum.t1_npoints );
         }
+        cerr << endl;
     }
 
     // normalize response functions by number of samples
@@ -735,9 +766,9 @@ int main( int argc, char* argv[] )
     }
 
     // do fourier transforms and write them out
-    spectrum.writeR1D();
-    spectrum.writeR2D();
-    spectrum.write1Dfft();
-    spectrum.write2DRabs();
+    if ( spectrum.writeR1D() != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.writeR2D() != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.write1Dfft() != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.write2DRabs() != IR2DOK ) exit(EXIT_FAILURE);
     cout << ">>> Done!" << endl;
 }

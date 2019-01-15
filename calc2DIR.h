@@ -10,6 +10,8 @@ using namespace std;
 #define IR2DOK 0
 #define PI M_PI
 #define HBAR 5.308837367 // in cm-1*ps
+#define PSTR        "||||||||||||||||||||||||||||||||||||||||||||||||||"
+#define PWID        50
 class IR2D
 {
     public:
@@ -27,6 +29,7 @@ class IR2D
         int    nsamples=1 ;             // number of samples
         double sample_every=10.;        // how often to take a new sample in ps
         int    nchrom=1;                // number of uncoupled chromophores to consider
+        int    length=0;                // number of frames in trajectory files
         int    t1_npoints;              // number of data points for t1
         int    t3_npoints;              // number of data points for t3
         double window0 = 1400;          // lower limit of spectral window in cm-1
