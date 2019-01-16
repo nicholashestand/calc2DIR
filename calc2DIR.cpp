@@ -217,7 +217,7 @@ int IR2D::readDframe( int frame, string t )
     // note that in the bin file all x's come first, then y's, etc
     for ( int i = 0; i < 3; i ++ ){
         for ( int chrom = 0; chrom < nchrom; chrom ++ ){
-            if ( t.compare("t0") == 0 )      dipole_t0[chrom][i] = dipoleTmp[i*nchrom + chrom];
+            if      ( t.compare("t0") == 0 ) dipole_t0[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else if ( t.compare("t1") == 0 ) dipole_t1[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else if ( t.compare("t2") == 0 ) dipole_t2[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else if ( t.compare("t3") == 0 ) dipole_t3[chrom][i] = dipoleTmp[i*nchrom + chrom];
@@ -553,7 +553,8 @@ int IR2D::write2DRabs()
     // See Hamm and Zanni eq 4.36
     for ( i = 0; i < fftlen; i ++ ){
         for ( j = 0; j < fftlen; j ++ ){
-            res[ i*fftlen + j ] = fftOut[ (fftlen - i)*fftlen + j ];
+            if ( i == 0 ) res[ i*fftlen + j ] = fftOut[ i*fftlen + j ]; // w1=0 goes to w1=0
+            else res[ i*fftlen + j ] = fftOut[ (fftlen - i)*fftlen + j ]; // w1 to -w1
         }
     }
 
@@ -686,7 +687,7 @@ void printProgress( int currentStep, int totalSteps )
 int main( int argc, char* argv[] )
 {
     int sample;
-    int frame0, frame_t1, frame_t2, frame_t3;
+    int frame_t0, frame_t1, frame_t2, frame_t3;
     int t1, t2, t3;
     int err;
 
@@ -696,28 +697,25 @@ int main( int argc, char* argv[] )
         exit( EXIT_FAILURE );
     }
 
-    // get input file name
-    string inpf( argv[1] );
+    // get input file name and initialize IR2D class
+    IR2D spectrum( argv[1] );
 
-    // Initialize the IR2D class
-    IR2D spectrum( inpf );
-
-    // set t2 waiting time in units of frame
+    // set t2 waiting time in units of frames
     t2 = static_cast<int>(spectrum.t2/spectrum.dt);
 
     // Loop over the trajectory
     for ( sample = 0; sample < spectrum.nsamples; sample ++ ){
 
         // get frame number, read and save dipole at t0
-        frame0 = sample*static_cast<int>(spectrum.sample_every/spectrum.dt);
+        frame_t0 = sample*static_cast<int>(spectrum.sample_every/spectrum.dt);
         fprintf(stderr, "    Now processing sample %d/%d starting at %.2f ps\n", \
-                sample, spectrum.nsamples, frame0*spectrum.dt ); fflush(stderr);
-        if ( spectrum.readDframe(frame0, "t0" ) != IR2DOK ) exit(EXIT_FAILURE);;
+                sample, spectrum.nsamples, frame_t0*spectrum.dt ); fflush(stderr);
+        if ( spectrum.readDframe(frame_t0, "t0" ) != IR2DOK ) exit(EXIT_FAILURE);;
 
         // loop over t1
         for ( t1 = 0; t1 < spectrum.t1t3_npoints; t1 ++ ){
             // get frame number for current t1
-            frame_t1 = frame0 + t1;
+            frame_t1 = frame_t0 + t1;
 
             // read in energy and dipole
             if ( spectrum.readEframe(frame_t1, "t1") != IR2DOK ) exit(EXIT_FAILURE);
@@ -729,13 +727,13 @@ int main( int argc, char* argv[] )
             memcpy( spectrum.energy_t1_last, spectrum.energy_t1, spectrum.nchrom*sizeof(double) );
 
             // get frame number and dipole for time t2
-            frame_t2 = frame0 + t1 + t2;
+            frame_t2 = frame_t1 + t2;
             if ( spectrum.readDframe(frame_t2, "t2") != IR2DOK ) exit(EXIT_FAILURE);
 
             // loop over t3 at current t1
             for ( t3 = 0; t3 < spectrum.t1t3_npoints; t3 ++ ){
                 // get frame number for current t3
-                frame_t3 = frame0 + t1 + t2 + t3;
+                frame_t3 = frame_t2 + t3;
 
                 // read in energy and dipole
                 if ( spectrum.readEframe(frame_t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
