@@ -130,9 +130,9 @@ int IR2D::readParam( string _inpf_ )
     tellParam<double>( "window1", window1 );
     cout << ">>> Done reading simulation parameters from " << _inpf_ << endl;
 
-    if ( trjlen*dt < (nsamples-1)*sample_every + (2*t1t3_max + t2) ){
+    if ( trjlen < static_cast<int>((nsamples-1)*sample_every + (2*t1t3_max + t2)/dt) ){
         cout << "WARNING:: The given trajectory length is not long enough.\n" << 
-                      "\t  Must be " <<  (nsamples-1)*sample_every + (2*t1t3_max + t2) << 
+                      "\t  Must be " <<  (nsamples-1)*sample_every + (2*t1t3_max/dt + t2) << 
                       " frames long.\n\t  Check input file. Aborting." << endl;
         exit(EXIT_FAILURE);
     }
