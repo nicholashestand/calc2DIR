@@ -18,10 +18,7 @@ IR2D::IR2D( string _inpf_ )
     string line;
 
     // read input file
-    if ( err = readParam( _inpf_ ) != IR2DOK ) { 
-        cerr << "Warning:: readParam returned with error " << err << "." << endl; 
-        exit( EXIT_FAILURE );
-    }
+    if ( err = readParam( _inpf_ ) != IR2DOK ) exit( EXIT_FAILURE );
 
     // allocate variable arrays
     energy_t1       = new double[nchrom]();
@@ -45,7 +42,6 @@ IR2D::IR2D( string _inpf_ )
     if ( ! efile.is_open() ) { fileOpenErr( _efile_ ); exit(EXIT_FAILURE);}
     dfile.open( _dfile_, ios::binary );    
     if ( ! dfile.is_open() ) { fileOpenErr( _dfile_ ); exit(EXIT_FAILURE);}
-
 }
 
 IR2D::~IR2D()
@@ -99,19 +95,19 @@ int IR2D::readParam( string _inpf_ )
         // save parameters as class variable
         if      ( para.compare("energy_file") == 0 )  _efile_      = value;
         else if ( para.compare("dipole_file") == 0 )  _dfile_      = value;
-        else if ( para.compare("trjlen") == 0 )       trjlen       = stoi(value);
+        else if ( para.compare("trjlen")      == 0 )  trjlen       = stoi(value);
         else if ( para.compare("output_file") == 0 )  _ofile_      = value;
-        else if ( para.compare("time_step") == 0 )    dt           = stof(value);
-        else if ( para.compare("t1t3_max") == 0 )     t1t3_max     = stof(value);
-        else if ( para.compare("t2") == 0 )           t2           = stof(value);
-        else if ( para.compare("lifetimet1") == 0 )   lifetime_T1  = stof(value);
-        else if ( para.compare("anharm") == 0 )       anharm       = stof(value);
-        else if ( para.compare("nsamples") == 0 )     nsamples     = stoi(value);
+        else if ( para.compare("time_step")   == 0 )  dt           = stof(value);
+        else if ( para.compare("t1t3_max")    == 0 )  t1t3_max     = stof(value);
+        else if ( para.compare("t2")          == 0 )  t2           = stof(value);
+        else if ( para.compare("lifetimet1")  == 0 )  lifetime_T1  = stof(value);
+        else if ( para.compare("anharm")      == 0 )  anharm       = stof(value);
+        else if ( para.compare("nsamples")    == 0 )  nsamples     = stoi(value);
         else if ( para.compare("sample_every") == 0 ) sample_every = stof(value);
-        else if ( para.compare("nchrom") == 0 )       nchrom       = stoi(value);
-        else if ( para.compare("fftlen") == 0 )       fftlen       = stoi(value);
-        else if ( para.compare("window0") == 0 )      window0      = stof(value);
-        else if ( para.compare("window1") == 0 )      window1      = stof(value);
+        else if ( para.compare("nchrom")      == 0 )  nchrom       = stoi(value);
+        else if ( para.compare("fftlen")      == 0 )  fftlen       = stoi(value);
+        else if ( para.compare("window0")     == 0 )  window0      = stof(value);
+        else if ( para.compare("window1")     == 0 )  window1      = stof(value);
         else cerr << "\tWARNING:: parameter " << para << " is not recognized." << endl;
     }
     inpf.close();
@@ -148,10 +144,10 @@ int IR2D::readParam( string _inpf_ )
     shift = 0.5*(window1 + window0);
     cout << ">>> Shifting frequencies by: " << shift << " cm." << endl;
 
-    // set T2 lifetime as 2*T1 (see Hamm and Zanni p29 for discussion)
+    // set T2 lifetime as 2T1 (see Hamm and Zanni p29 for discussion)
     // also see Liang and Jansen JCTC 2012 eq 14 and 16
     lifetime_T2 = 2*lifetime_T1;
-    cout << ">>> Setting T2 to 2T1: " << lifetime_T2 << " ps." << endl;
+    cout << ">>> Setting T2 to 2 T1: " << lifetime_T2 << " ps." << endl;
 
     return IR2DOK;
 }
@@ -169,11 +165,11 @@ void IR2D::fileOpenErr( string _fn_ )
     cerr << "ERROR:: Could not open " << _fn_ << "." << endl;
 }
 
-int IR2D::readEframe( int frame, string t )
+int IR2D::readEframe( int frame, string which )
 // Read the energy file
 {
-    int frameTmp; 
-    float energyTmp[ nchrom*(nchrom+1)/2 ]; 
+    int     frameTmp, col, i; 
+    float   energyTmp[ nchrom*(nchrom+1)/2 ]; 
     int64_t file_offset;
 
     file_offset = frame*(sizeof(int)+sizeof(float)*nchrom*(nchrom+1)/2);
@@ -185,13 +181,12 @@ int IR2D::readEframe( int frame, string t )
     efile.read( (char*)energyTmp, sizeof(float)*nchrom*(nchrom+1)/2 );
 
     // only keep the energies, ignore the couplings for now
-    int col=0;
-    for ( int i = 0; i < nchrom; i ++ ){
-        // set to variable depending on t value
-        if ( t.compare("t1") == 0 )      energy_t1[i] = energyTmp[col] - shift;
-        else if ( t.compare("t3") == 0 ) energy_t3[i] = energyTmp[col] - shift;
+    col=0;
+    for ( i = 0; i < nchrom; i ++ ){
+        if      ( which.compare("t1") == 0 ) energy_t1[i] = energyTmp[col] - shift;
+        else if ( which.compare("t3") == 0 ) energy_t3[i] = energyTmp[col] - shift;
         else{
-            cout << "ERROR:: IR2D::readEframe t= " << t << " unknown." << endl;
+            cout << "ERROR:: IR2D::readEframe which= " << which << " unknown." << endl;
             return 1;
         }
         col += nchrom-i;
@@ -200,11 +195,11 @@ int IR2D::readEframe( int frame, string t )
     return IR2DOK;
 }
 
-int IR2D::readDframe( int frame, string t )
+int IR2D::readDframe( int frame, string which )
 // Read the dipole file
 {
-    int frameTmp;
-    float dipoleTmp[ nchrom*3 ];
+    int     frameTmp;
+    float   dipoleTmp[ nchrom*3 ];
     int64_t file_offset;
 
     file_offset = frame*(sizeof(int)+sizeof(float)*nchrom*3);
@@ -217,12 +212,12 @@ int IR2D::readDframe( int frame, string t )
     // note that in the bin file all x's come first, then y's, etc
     for ( int i = 0; i < 3; i ++ ){
         for ( int chrom = 0; chrom < nchrom; chrom ++ ){
-            if      ( t.compare("t0") == 0 ) dipole_t0[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( t.compare("t1") == 0 ) dipole_t1[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( t.compare("t2") == 0 ) dipole_t2[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( t.compare("t3") == 0 ) dipole_t3[chrom][i] = dipoleTmp[i*nchrom + chrom];
+            if      ( which.compare("t0") == 0 ) dipole_t0[chrom][i] = dipoleTmp[i*nchrom + chrom];
+            else if ( which.compare("t1") == 0 ) dipole_t1[chrom][i] = dipoleTmp[i*nchrom + chrom];
+            else if ( which.compare("t2") == 0 ) dipole_t2[chrom][i] = dipoleTmp[i*nchrom + chrom];
+            else if ( which.compare("t3") == 0 ) dipole_t3[chrom][i] = dipoleTmp[i*nchrom + chrom];
             else{
-                cout << "ERROR: IR2D::readDframe t= " << t << " unknown." << endl;
+                cout << "ERROR: IR2D::readDframe which= " << which << " unknown." << endl;
                 return 1;
             }
         }
@@ -235,13 +230,14 @@ complex<double> IR2D::getR1D( int t1 )
 // return the linear response function at a given t1 for a given chromophore
 // See Eq 7.10 from Hamm and Zanni
 {
+    int    chrom;
     double mu;
     complex<double> R1Dtmp;
 
     R1Dtmp = complex_zero;
-    for ( int chrom = 0; chrom < nchrom; chrom ++ ){
+    for ( chrom = 0; chrom < nchrom; chrom ++ ){
         // dipole part -- NOTE: I DO NOT MAKE THE CONDON APPROXIMATION
-        // Also note that this is an isotropic averaged spectrum
+        // Also note that this is an isotropically averaged spectrum
         mu      = dot3(dipole_t0[chrom],dipole_t1[chrom]);
         // average the response function over all of the chromophores then return
         R1Dtmp += img*mu*eint_t1[chrom]*exp(-t1*dt/lifetime_T2);
@@ -255,7 +251,7 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 // See Eq 7.35 from Hamm and Zanni
 {
     double mu;
-    int chrom;
+    int    chrom;
     complex<double> R2Dtmp;
     double lifetime_T2_12 = 2.*lifetime_T1/3.;// See Hamm and Zanni eq 4.21
     lifetime_T2_12 = lifetime_T2;             // Note that Jansen's NISE code sets T2 lifetimes equal 
@@ -343,6 +339,8 @@ int IR2D::get_eint( int t, string which )
                 eint_t1[chrom] *= exp(arg);
             }
         }
+        // save current energies for next time step so can do integration
+        memcpy( energy_t1_last, energy_t1, nchrom*sizeof(double) );
     }
     else if ( which.compare("t3") == 0 ){
         for ( chrom = 0; chrom < nchrom; chrom ++ ){
@@ -354,6 +352,8 @@ int IR2D::get_eint( int t, string which )
                 eint_t3[chrom] *= exp(arg);
             }
         }
+        // save current energies for next time step so can do integration
+        memcpy( energy_t3_last, energy_t3, nchrom*sizeof(double) );
     }
     else{
         cout << "ERROR:: IR2D::get_eint which= " << which << " unknown." << endl;
@@ -363,16 +363,16 @@ int IR2D::get_eint( int t, string which )
     return IR2DOK;
 }
 
-double IR2D::dot3( vec3 x, vec3 y )
+double IR2D::dot3( vec3 a, vec3 b )
 // dot product of 3 vector
 {
-    return x[0]*y[0] + x[1]*y[1] + x[2]*y[2]; 
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; 
 }
 
 int IR2D::writeR1D()
 // write R1D to file
 {
-    string fn=_ofile_+"-R1D.dat";
+    string   fn=_ofile_+"-R1D.dat";
     ofstream ofile;
     int t1;
 
@@ -441,12 +441,12 @@ int IR2D::writeR2D()
 int IR2D::write1Dfft()
 // write fft of R1D
 {
-    string fn;
+    string   fn;
     ofstream ofile;
     complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
-    double freq, scale;
-    int t1, i;
+    double   freq, scale;
+    int      t1, i;
 
     // allocate arrays
     fftIn  = new complex<double>[fftlen]();
@@ -462,6 +462,12 @@ int IR2D::write1Dfft()
     plan = fftw_plan_dft_1d( fftlen, reinterpret_cast<fftw_complex*>(fftIn), \
                                      reinterpret_cast<fftw_complex*>(fftOut),\
                                      FFTW_BACKWARD, FFTW_ESTIMATE );
+
+    if ( 2*t1t3_npoints > fftlen ){
+        cout << "ERROR:: fftlen = " << fftlen << " < " << "2*t1t3_max/dt = " << 2*t1t3_npoints << endl;
+        cout << "Specify longer fftlen in input file. Aborting." << endl;
+        exit(EXIT_FAILURE);
+    }
     
     // See Eq 4.8 from Hamm and Zanni -- Absorptive part
     for ( i = 0; i < fftlen ; i ++ ) fftIn[i] = complex_zero;
@@ -519,10 +525,10 @@ int IR2D::write1Dfft()
 int IR2D::write2DRabs()
 // write the purely absorptive 2D IR spectrum
 {
-    string fn;
+    string    fn;
     complex<double> *fftIn, *fftOut, *res;
     fftw_plan plan;
-    int t1, t3, i, j;
+    int       t1, t3, i, j;
 
     // allocate arrays
     fftIn  = new complex<double>[fftlen*fftlen]();
@@ -554,7 +560,7 @@ int IR2D::write2DRabs()
     for ( i = 0; i < fftlen; i ++ ){
         for ( j = 0; j < fftlen; j ++ ){
             if ( i == 0 ) res[ i*fftlen + j ] = fftOut[ i*fftlen + j ]; // w1=0 goes to w1=0
-            else res[ i*fftlen + j ] = fftOut[ (fftlen - i)*fftlen + j ]; // w1 to -w1
+            else          res[ i*fftlen + j ] = fftOut[ (fftlen - i)*fftlen + j ]; // w1 to -w1
         }
     }
 
@@ -611,8 +617,8 @@ int IR2D::write2Dout( complex<double> *data, string fn, string which, int n )
     cout << ">>> Writing " << fn << "." << endl;
 
     // assign shifts and spectral window limits
-    shift_w1    = shift;
-    shift_w3    = shift;
+    shift_w1   = shift;
+    shift_w3   = shift;
     window0_w1 = window0;
     window1_w1 = window1;
     window0_w3 = window0;
@@ -709,7 +715,7 @@ int main( int argc, char* argv[] )
         // get frame number, read and save dipole at t0
         frame_t0 = sample*static_cast<int>(spectrum.sample_every/spectrum.dt);
         fprintf(stderr, "    Now processing sample %d/%d starting at %.2f ps\n", \
-                sample, spectrum.nsamples, frame_t0*spectrum.dt ); fflush(stderr);
+                sample+1, spectrum.nsamples, frame_t0*spectrum.dt ); fflush(stderr);
         if ( spectrum.readDframe(frame_t0, "t0" ) != IR2DOK ) exit(EXIT_FAILURE);;
 
         // loop over t1
@@ -721,10 +727,9 @@ int main( int argc, char* argv[] )
             if ( spectrum.readEframe(frame_t1, "t1") != IR2DOK ) exit(EXIT_FAILURE);
             if ( spectrum.readDframe(frame_t1, "t1") != IR2DOK ) exit(EXIT_FAILURE);
             
-            // get exponential integral, calculate 1D response function, and save energy in t1_last
+            // get exponential integral and 1D response function
             if ( spectrum.get_eint( t1, "t1" ) != IR2DOK ) exit(EXIT_FAILURE);
             spectrum.R1D[t1] += spectrum.getR1D( t1 );
-            memcpy( spectrum.energy_t1_last, spectrum.energy_t1, spectrum.nchrom*sizeof(double) );
 
             // get frame number and dipole for time t2
             frame_t2 = frame_t1 + t2;
@@ -739,13 +744,12 @@ int main( int argc, char* argv[] )
                 if ( spectrum.readEframe(frame_t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
                 if ( spectrum.readDframe(frame_t3, "t3") != IR2DOK ) exit(EXIT_FAILURE); 
 
-                // calculate 2D response function then save energy in t3_last
+                // get exponential integral and 2D response function 
                 if ( spectrum.get_eint(t3, "t3") != IR2DOK ) exit(EXIT_FAILURE);
                 spectrum.R2D_R1[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R1" );
                 spectrum.R2D_R3[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R3" );
                 spectrum.R2D_R4[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R4" );
                 spectrum.R2D_R6[ t1 * spectrum.t1t3_npoints + t3 ] += spectrum.getR2D(t1, t3, "R6" );
-                memcpy( spectrum.energy_t3_last, spectrum.energy_t3, spectrum.nchrom*sizeof(double) );
             }
             printProgress( t1+1, spectrum.t1t3_npoints );
         }
@@ -753,7 +757,7 @@ int main( int argc, char* argv[] )
     }
 
     // normalize response functions by number of samples
-    for ( int t1 = 0; t1 < spectrum.t1t3_npoints; t1 ++ ){
+    for ( t1 = 0; t1 < spectrum.t1t3_npoints; t1 ++ ){
         spectrum.R1D[t1]/=(1.*spectrum.nsamples);
         for ( t3 = 0; t3 < spectrum.t1t3_npoints; t3 ++ ){
             spectrum.R2D_R1[ t1 * spectrum.t1t3_npoints + t3 ] /= ( 1.*spectrum.nsamples );
@@ -764,9 +768,9 @@ int main( int argc, char* argv[] )
     }
 
     // do fourier transforms and write them out
-    if ( spectrum.writeR1D() != IR2DOK ) exit(EXIT_FAILURE);
-    if ( spectrum.writeR2D() != IR2DOK ) exit(EXIT_FAILURE);
-    if ( spectrum.write1Dfft() != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.writeR1D() != IR2DOK )    exit(EXIT_FAILURE);
+    if ( spectrum.writeR2D() != IR2DOK )    exit(EXIT_FAILURE);
+    if ( spectrum.write1Dfft() != IR2DOK )  exit(EXIT_FAILURE);
     if ( spectrum.write2DRabs() != IR2DOK ) exit(EXIT_FAILURE);
     cout << ">>> Done!" << endl;
 }
