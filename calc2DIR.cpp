@@ -108,9 +108,9 @@ int IR2D::readParam( string _inpf_ )
     tellParam<double>( "window1", window1 );
     cout << ">>> Done reading simulation parameters from " << _inpf_ << endl;
 
-    if ( trjlen < static_cast<int>((nsamples-1)*sample_every + (2*t1t3_max + t2)/dt) ){
+    if ( trjlen < static_cast<int>(((nsamples-1)*sample_every + (2*t1t3_max + t2))/dt) ){
         cout << "WARNING:: The given trajectory length is not long enough.\n" << 
-                      "\t  Must be " <<  (nsamples-1)*sample_every + (2*t1t3_max/dt + t2) << 
+                      "\t  Must be " <<  (nsamples-1)*sample_every/dt + (2*t1t3_max/dt + t2) << 
                       " frames long.\n\t  Check input file. Aborting." << endl;
         exit(EXIT_FAILURE);
     }
@@ -143,6 +143,15 @@ void IR2D::fileOpenErr( string _fn_ )
     cerr << "ERROR:: Could not open " << _fn_ << "." << endl;
 }
 
+void IR2D::fileReadErr( string _fn_ )
+// give an error message when I cant open a file
+{
+    cerr << "ERROR:: Reading " << _fn_ << " failed. Aborting." << endl;
+    exit(EXIT_FAILURE);
+}
+
+
+
 int IR2D::readEframe( int frame, string which )
 // Read the energy file
 {
@@ -157,6 +166,7 @@ int IR2D::readEframe( int frame, string which )
     // with an integer frame number at the beginning of the line
     efile.read( (char*)&frameTmp , sizeof(int) );
     efile.read( (char*)&energyTmp, sizeof(float) );
+    if ( not efile.good() ) fileReadErr( _efile_ );
 
     // only keep the energies, ignore the couplings for now
     if      ( which.compare("t1") == 0 ) energy_t1 = energyTmp - shift;
@@ -181,6 +191,8 @@ int IR2D::readDframe( int frame, string which )
 
     dfile.read( (char*)&frameTmp, sizeof(int) );
     dfile.read( (char*)dipoleTmp, sizeof(float)*3 );
+    if ( not dfile.good() ) fileReadErr( _dfile_ );
+
 
     // put these into the dipole vector variable
     // note that in the bin file all x's come first, then y's, etc

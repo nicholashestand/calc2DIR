@@ -68,6 +68,7 @@ class IR2D
 
         // member functions
         void fileOpenErr( string _fn_ );
+        void fileReadErr( string _fn_ );
         int  readParam( string _inpf_ );
         int  readEframe( int frame, string which );
         int  readDframe( int frame, string which );
