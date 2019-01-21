@@ -3,11 +3,11 @@ energy_file  Energy.bin  # energy file
 dipole_file  Dipole.bin  # dipole file
 trjlen       100000      # number of frames in energy and dipole files
 output_file  spectrum    # name for output files
-time_step    0.01        # time step in ps
-t1t3_max     10.         # maximum t1 and t3 in ps
+time_step    0.02        # time step in ps
+t1t3_max     5.          # maximum t1 and t3 in ps
 t2           0.          # waiting time in ps
 lifetimeT1   1.00        # lifetime T1 in ps
-nsamples     100         # number of samples to take
+nsamples     199         # number of samples to take
 sample_every 10.         # how often to sample system in ps 
 window0      1400        # lower limit for spectral window
 window1      1600        # upper limit for spectral window
