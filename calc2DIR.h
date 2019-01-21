@@ -31,7 +31,6 @@ class IR2D
         double anharm=14.0;             // anharmonicity in cm-1
         int    nsamples=1 ;             // number of samples
         double sample_every=10.;        // how often to take a new sample in ps
-        int    nchrom=1;                // number of uncoupled chromophores to consider
         int    trjlen=0;                // number of frames in trajectory files
         int    fftlen=4096;             // number of data points for 1 dimension of fft
         int    t1t3_npoints;            // number of data points for t1 and t3 dimensions
@@ -40,14 +39,14 @@ class IR2D
         double shift;                   // reference frequency in cm-1
 
         // arrays to hold energy and dipole
-        double *energy_t1;              // energy at frame t1
-        double *energy_t1_last;         // energy at frame t1 - 1
-        double *energy_t3;              // energy at frame t3
-        double *energy_t3_last;         // energy at frame t3 - 1
-        vec3   *dipole_t0;              // dipole vector at frame t0
-        vec3   *dipole_t1;              // dipole vector at frame t0 + t1
-        vec3   *dipole_t2;              // dipole vector at frame t0 + t1 + t2
-        vec3   *dipole_t3;              // dipole vector at frame t0 + t1 + t2 + t3
+        double energy_t1;               // energy at frame t1
+        double energy_t1_last;          // energy at frame t1 - 1
+        double energy_t3;               // energy at frame t3
+        double energy_t3_last;          // energy at frame t3 - 1
+        vec3   dipole_t0;               // dipole vector at frame t0
+        vec3   dipole_t1;               // dipole vector at frame t0 + t1
+        vec3   dipole_t2;               // dipole vector at frame t0 + t1 + t2
+        vec3   dipole_t3;               // dipole vector at frame t0 + t1 + t2 + t3
 
         // complex constants
         const complex<double> img          = {0.,1.};   
@@ -60,8 +59,8 @@ class IR2D
         complex<double> *R2D_R3;        // third order response function R3
         complex<double> *R2D_R4;        // third order response function R4=R5
         complex<double> *R2D_R6;        // third order response function R6
-        complex<double> *eint_t1;       // integral from 0 to t1 of dw(tau)_01
-        complex<double> *eint_t3;       // integral from t1+t2 to t1+t2+t3 of dw(tau)_01
+        complex<double> eint_t1;        // integral from 0 to t1 of dw(tau)_01
+        complex<double> eint_t3;        // integral from t1+t2 to t1+t2+t3 of dw(tau)_01
 
         // file handles
         ifstream efile;

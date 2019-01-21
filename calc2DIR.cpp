@@ -21,21 +21,11 @@ IR2D::IR2D( string _inpf_ )
     if ( err = readParam( _inpf_ ) != IR2DOK ) exit( EXIT_FAILURE );
 
     // allocate variable arrays
-    energy_t1       = new double[nchrom]();
-    energy_t1_last  = new double[nchrom]();
-    energy_t3       = new double[nchrom]();
-    energy_t3_last  = new double[nchrom]();
-    dipole_t0       = new vec3[nchrom]();
-    dipole_t1       = new vec3[nchrom]();
-    dipole_t2       = new vec3[nchrom]();
-    dipole_t3       = new vec3[nchrom]();
     R1D             = new complex<double>[t1t3_npoints]();
     R2D_R1          = new complex<double>[t1t3_npoints*t1t3_npoints]();
     R2D_R3          = new complex<double>[t1t3_npoints*t1t3_npoints]();
     R2D_R4          = new complex<double>[t1t3_npoints*t1t3_npoints]();
     R2D_R6          = new complex<double>[t1t3_npoints*t1t3_npoints]();
-    eint_t1         = new complex<double>[nchrom]();
-    eint_t3         = new complex<double>[nchrom]();
 
     // open the energy and dipole files
     efile.open( _efile_, ios::binary );    
@@ -48,21 +38,11 @@ IR2D::~IR2D()
 // Default Destructor
 {
     // destroy arrays
-    delete [] energy_t1;
-    delete [] energy_t1_last;
-    delete [] energy_t3;
-    delete [] energy_t3_last;
-    delete [] dipole_t0;
-    delete [] dipole_t1;
-    delete [] dipole_t2;
-    delete [] dipole_t3;
     delete [] R1D;
     delete [] R2D_R1;
     delete [] R2D_R3;
     delete [] R2D_R4;
     delete [] R2D_R6;
-    delete [] eint_t1;
-    delete [] eint_t3;
 
     // close files
     efile.close();
@@ -104,7 +84,6 @@ int IR2D::readParam( string _inpf_ )
         else if ( para.compare("anharm")      == 0 )  anharm       = stof(value);
         else if ( para.compare("nsamples")    == 0 )  nsamples     = stoi(value);
         else if ( para.compare("sample_every") == 0 ) sample_every = stof(value);
-        else if ( para.compare("nchrom")      == 0 )  nchrom       = stoi(value);
         else if ( para.compare("fftlen")      == 0 )  fftlen       = stoi(value);
         else if ( para.compare("window0")     == 0 )  window0      = stof(value);
         else if ( para.compare("window1")     == 0 )  window1      = stof(value);
@@ -124,7 +103,6 @@ int IR2D::readParam( string _inpf_ )
     tellParam<double>( "anharm", anharm );
     tellParam<int>( "nsamples", nsamples );
     tellParam<int>( "sample_every", sample_every );
-    tellParam<int>( "nchrom", nchrom );
     tellParam<int>( "fftlen", fftlen );
     tellParam<double>( "window0", window0 );
     tellParam<double>( "window1", window1 );
@@ -168,28 +146,24 @@ void IR2D::fileOpenErr( string _fn_ )
 int IR2D::readEframe( int frame, string which )
 // Read the energy file
 {
-    int     frameTmp, col, i; 
-    float   energyTmp[ nchrom*(nchrom+1)/2 ]; 
+    int     frameTmp;
+    float   energyTmp;
     int64_t file_offset;
 
-    file_offset = frame*(sizeof(int)+sizeof(float)*nchrom*(nchrom+1)/2);
+    file_offset = frame*(sizeof(int)+sizeof(float));
     efile.seekg( file_offset );
 
-    // for files to use with NISE, the hamiltonian is stored in upper tridiagonal format
-    // on each line with an integer at the beginning of the line
-    efile.read( (char*)&frameTmp, sizeof(int) );
-    efile.read( (char*)energyTmp, sizeof(float)*nchrom*(nchrom+1)/2 );
+    // the energy for each frame is stored on a seperate line
+    // with an integer frame number at the beginning of the line
+    efile.read( (char*)&frameTmp , sizeof(int) );
+    efile.read( (char*)&energyTmp, sizeof(float) );
 
     // only keep the energies, ignore the couplings for now
-    col=0;
-    for ( i = 0; i < nchrom; i ++ ){
-        if      ( which.compare("t1") == 0 ) energy_t1[i] = energyTmp[col] - shift;
-        else if ( which.compare("t3") == 0 ) energy_t3[i] = energyTmp[col] - shift;
-        else{
-            cout << "ERROR:: IR2D::readEframe which= " << which << " unknown." << endl;
-            return 1;
-        }
-        col += nchrom-i;
+    if      ( which.compare("t1") == 0 ) energy_t1 = energyTmp - shift;
+    else if ( which.compare("t3") == 0 ) energy_t3 = energyTmp - shift;
+    else{
+        cout << "ERROR:: IR2D::readEframe which= " << which << " unknown." << endl;
+        return 1;
     }
 
     return IR2DOK;
@@ -199,27 +173,25 @@ int IR2D::readDframe( int frame, string which )
 // Read the dipole file
 {
     int     frameTmp;
-    float   dipoleTmp[ nchrom*3 ];
+    float   dipoleTmp[ 3 ];
     int64_t file_offset;
 
-    file_offset = frame*(sizeof(int)+sizeof(float)*nchrom*3);
+    file_offset = frame*(sizeof(int)+sizeof(float)*3);
     dfile.seekg( file_offset );
 
     dfile.read( (char*)&frameTmp, sizeof(int) );
-    dfile.read( (char*)dipoleTmp, sizeof(float)*nchrom*3 );
+    dfile.read( (char*)dipoleTmp, sizeof(float)*3 );
 
     // put these into the dipole vector variable
     // note that in the bin file all x's come first, then y's, etc
     for ( int i = 0; i < 3; i ++ ){
-        for ( int chrom = 0; chrom < nchrom; chrom ++ ){
-            if      ( which.compare("t0") == 0 ) dipole_t0[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( which.compare("t1") == 0 ) dipole_t1[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( which.compare("t2") == 0 ) dipole_t2[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else if ( which.compare("t3") == 0 ) dipole_t3[chrom][i] = dipoleTmp[i*nchrom + chrom];
-            else{
-                cout << "ERROR: IR2D::readDframe which= " << which << " unknown." << endl;
-                return 1;
-            }
+        if      ( which.compare("t0") == 0 ) dipole_t0[i] = dipoleTmp[i];
+        else if ( which.compare("t1") == 0 ) dipole_t1[i] = dipoleTmp[i];
+        else if ( which.compare("t2") == 0 ) dipole_t2[i] = dipoleTmp[i];
+        else if ( which.compare("t3") == 0 ) dipole_t3[i] = dipoleTmp[i];
+        else{
+            cout << "ERROR: IR2D::readDframe which= " << which << " unknown." << endl;
+        return 1;
         }
     }
 
@@ -227,98 +199,102 @@ int IR2D::readDframe( int frame, string which )
 }
 
 complex<double> IR2D::getR1D( int t1 )
-// return the linear response function at a given t1 for a given chromophore
+// return the linear response function at a given t1
 // See Eq 7.10 from Hamm and Zanni
 {
-    int    chrom;
     double mu;
-    complex<double> R1Dtmp;
+    complex<double> R1D;
+    vec3 polx={1.,0.,0.}, poly={0.,1.,0.}, polz={0.,0.,1.};
 
-    R1Dtmp = complex_zero;
-    for ( chrom = 0; chrom < nchrom; chrom ++ ){
-        // dipole part -- NOTE: I DO NOT MAKE THE CONDON APPROXIMATION
-        // Also note that this is an isotropically averaged spectrum
-        mu      = dot3(dipole_t0[chrom],dipole_t1[chrom]);
-        // average the response function over all of the chromophores then return
-        R1Dtmp += img*mu*eint_t1[chrom]*exp(-t1*dt/lifetime_T2);
-    }
+    // get dipole part for isotropically averaged spectrum
+    // NOTE: The Condon approximation is NOT made here
+    mu = 0.;
+    mu+=dot3(dipole_t0,polx)*dot3(dipole_t1,polx);
+    mu+=dot3(dipole_t0,poly)*dot3(dipole_t1,poly);
+    mu+=dot3(dipole_t0,polz)*dot3(dipole_t1,polz);
 
-    return R1Dtmp/(1.*nchrom);
+    // get the response function
+    R1D = img*mu*eint_t1*exp(-t1*dt/lifetime_T2);
+
+    return R1D;
 }
 
 complex<double> IR2D::getR2D( int t1, int t3, string which )
-// return the third order response function at a given t3 for a given chromophore
+// return the third order response function at a given t1, t3
 // See Eq 7.35 from Hamm and Zanni
 {
     double mu;
-    int    chrom;
-    complex<double> R2Dtmp;
+    complex<double> R2D;
+    vec3 polx={1.,0.,0.}, poly={0.,1.,0.}, polz={0.,0.,1.};
     double lifetime_T2_12 = 2.*lifetime_T1/3.;// See Hamm and Zanni eq 4.21
-    lifetime_T2_12 = lifetime_T2;             // Note that Jansen's NISE code sets T2 lifetimes equal 
-                                              // I do here for consistency with that program
+    lifetime_T2_12 = lifetime_T2;             // set equal here, see Jansen 2012 
 
-    R2Dtmp = complex_zero;
-    for ( chrom = 0; chrom < nchrom; chrom ++ ){
-        // dipole part -- NOTE: I DO NOT MAKE THE CONDON APPROXIMATION
-        // Also note that this is an isotropically averaged spectrum where 
-        // all three pulses have the same polarization 
-        mu      = dot3(dipole_t0[chrom],dipole_t1[chrom])*
-                  dot3(dipole_t2[chrom],dipole_t3[chrom]);
+    R2D = complex_zero;
+    // get dipole part for isotropically averaged ZZZZ spectrum
+    // NOTE: The Condon approximation is NOT made here
+    // all four pulses have the same polarization 
+    // see Hamm and Zanni eq 5.35
+    mu = 0;
+    mu+=dot3(dipole_t0,polx)*dot3(dipole_t1,polx)*
+        dot3(dipole_t2,polx)*dot3(dipole_t3,polx);
+    mu+=dot3(dipole_t0,poly)*dot3(dipole_t1,poly)*
+        dot3(dipole_t2,poly)*dot3(dipole_t3,poly);
+    mu+=dot3(dipole_t0,polz)*dot3(dipole_t1,polz)*
+        dot3(dipole_t2,polz)*dot3(dipole_t3,polz);
 
-        // average the response function over all of the chromophores then return
-        if ( which.compare("R1") == 0 ){ // rephasing
-                      // dipole
-                      // first pulse oscillating in 01 coherence
-                      // second pulse population relaxation (note t2 is in ps already)
-                      // third pulse oscillating in 01 coherence
-            R2Dtmp += img*mu* 
-                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)
-                                          *exp(-t2   /lifetime_T1)
-                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2);
-        }
-        else if ( which.compare("R4") == 0 ){ // non-rephasing
-                      // dipole
-                      // first pulse oscillating in 01 coherence
-                      // second pulse population relaxation (note t2 is in ps already)
-                      // third pulse oscillating in 01 coherence
-            R2Dtmp += img*mu*  
-                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)
-                                    *exp(-t2   /lifetime_T1)
-                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2);
-        }
-        else if ( which.compare("R3") == 0 ){ // rephasing
-            // dipole, the factor of 2 assumes the transition dipoles scale 
-            // like a harmonic oscillator (see p 68 of Hamm and Zanni)
-            // first pulse oscillating in 01 coherence
-            // second pulse population relaxation (note t2 is in ps already)
-            // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
-            // include anharmonicity term for the 12 transition
-            R2Dtmp -= 2.*img*mu*                                      
-                      conj(eint_t1[chrom])*exp(-t1*dt/lifetime_T2)    
-                                          *exp(-t2   /lifetime_T1)    
-                          *eint_t3[chrom] *exp(-t3*dt/lifetime_T2_12) 
-                          *exp(img*(dt*t3)*anharm/HBAR);              
-        }
-        else if ( which.compare("R6") == 0 ){ // non-rephasing
-            // dipole, the factor of 2 assumes the transition dipoles scale 
-            // like a harmonic oscillator (see p 68 of Hamm and Zanni)
-            // first pulse oscillating in 01 coherence
-            // second pulse population relaxation (note t2 is in ps already)
-            // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
-            // include anharmonicity term for the 12 transition
-            R2Dtmp -= 2.*img*mu*                                     
-                      eint_t1[chrom]*exp(-t1*dt/lifetime_T2)         
-                                    *exp(-t2   /lifetime_T1)         
-                     *eint_t3[chrom]*exp(-t3*dt/lifetime_T2_12)      
-                     *exp(img*(dt*t3)*anharm/HBAR);                  
-        }
-        else {
-            cout << "ERROR:: IR2D::getR2D which= " << which << " is unknown. Aborting." << endl;
-            exit(EXIT_FAILURE);
-        }
+    // get the response function
+    if ( which.compare("R1") == 0 ){ // rephasing
+        // dipole
+        // first pulse oscillating in 01 coherence
+        // second pulse population relaxation (note t2 is in ps already)
+        // third pulse oscillating in 01 coherence
+        R2D += img*mu* 
+               conj(eint_t1)*exp(-t1*dt/lifetime_T2)
+                            *exp(-t2   /lifetime_T1)
+                   *eint_t3 *exp(-t3*dt/lifetime_T2);
+    }
+    else if ( which.compare("R4") == 0 ){ // non-rephasing
+        // dipole
+        // first pulse oscillating in 01 coherence
+        // second pulse population relaxation (note t2 is in ps already)
+        // third pulse oscillating in 01 coherence
+        R2D += img*mu* 
+               eint_t1*exp(-t1*dt/lifetime_T2)
+                      *exp(-t2   /lifetime_T1)
+              *eint_t3*exp(-t3*dt/lifetime_T2);
+    }
+    else if ( which.compare("R3") == 0 ){ // rephasing
+        // dipole, the factor of 2 assumes the transition dipoles scale 
+        // like a harmonic oscillator (see p 68 of Hamm and Zanni)
+        // first pulse oscillating in 01 coherence
+        // second pulse population relaxation (note t2 is in ps already)
+        // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
+        // include anharmonicity term for the 12 transition
+        R2D -= 2.*img*mu*
+               conj(eint_t1)*exp(-t1*dt/lifetime_T2)
+                                   *exp(-t2   /lifetime_T1)
+                   *eint_t3 *exp(-t3*dt/lifetime_T2_12)
+                   *exp(img*(dt*t3)*anharm/HBAR);              
+    }
+    else if ( which.compare("R6") == 0 ){ // non-rephasing
+        // dipole, the factor of 2 assumes the transition dipoles scale 
+        // like a harmonic oscillator (see p 68 of Hamm and Zanni)
+        // first pulse oscillating in 01 coherence
+        // second pulse population relaxation (note t2 is in ps already)
+        // third pulse oscillating in 12 coherence -- see eq 4.21 for relaxation
+        // include anharmonicity term for the 12 transition
+        R2D -= 2.*img*mu*
+               eint_t1*exp(-t1*dt/lifetime_T2)
+                             *exp(-t2   /lifetime_T1)
+              *eint_t3*exp(-t3*dt/lifetime_T2_12)
+              *exp(img*(dt*t3)*anharm/HBAR);
+    }
+    else {
+        cout << "ERROR:: IR2D::getR2D which= " << which << " is unknown. Aborting." << endl;
+        exit(EXIT_FAILURE);
     }
 
-    return R2Dtmp/(1.*nchrom);
+    return R2D;
 }
 
 int IR2D::get_eint( int t, string which )
@@ -327,33 +303,28 @@ int IR2D::get_eint( int t, string which )
 // See Eq 7.35 from Hamm and Zanni for third order response function
 {
     complex<double> arg;
-    int chrom;
 
     if ( which.compare("t1") == 0 ){
-        for ( chrom = 0; chrom < nchrom; chrom ++ ){
-            // reset integral to zero at t1 = 0 (the exponential will be 1)
-            if ( t == 0 ) eint_t1[chrom] = complex_one;
-            else {
-                // integrate the equation for each chromophore using the trapezoid rule
-                arg = -img*dt*(energy_t1_last[chrom]+energy_t1[chrom])/(2.*HBAR);
-                eint_t1[chrom] *= exp(arg);
-            }
+        // reset integral to zero at t1 = 0 (the exponential will be 1)
+        if ( t == 0 ) eint_t1 = complex_one;
+        else {
+            // integrate the equation using the trapezoid rule
+            arg = -img*dt*(energy_t1_last+energy_t1)/(2.*HBAR);
+            eint_t1 *= exp(arg);
         }
         // save current energies for next time step so can do integration
-        memcpy( energy_t1_last, energy_t1, nchrom*sizeof(double) );
+        energy_t1_last = energy_t1;
     }
     else if ( which.compare("t3") == 0 ){
-        for ( chrom = 0; chrom < nchrom; chrom ++ ){
-            // reset integral to zero at t3 = 0 (the exponential will be 1)
-            if ( t == 0 ) eint_t3[chrom] = complex_one;
-            else {
-                // integrate the equation for each chromophore using the trapezoid rule
-                arg = -img*dt*(energy_t3_last[chrom]+energy_t3[chrom])/(2.*HBAR);
-                eint_t3[chrom] *= exp(arg);
-            }
+        // reset integral to zero at t3 = 0 (the exponential will be 1)
+        if ( t == 0 ) eint_t3 = complex_one;
+        else {
+            // integrate the equation using the trapezoid rule
+            arg = -img*dt*(energy_t3_last+energy_t3)/(2.*HBAR);
+            eint_t3 *= exp(arg);
         }
         // save current energies for next time step so can do integration
-        memcpy( energy_t3_last, energy_t3, nchrom*sizeof(double) );
+        energy_t3_last = energy_t3;
     }
     else{
         cout << "ERROR:: IR2D::get_eint which= " << which << " unknown." << endl;
