@@ -3,4 +3,4 @@
 # Width (cm-1)
 # Correlation time (fs)
 # Central frequency (cm-1)
-./stochastic 100000 20 15 500 1500
+./stochastic 1000000 20 15 500 1500
