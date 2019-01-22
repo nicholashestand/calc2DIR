@@ -14,11 +14,10 @@ using namespace std;
 IR2D::IR2D( string _inpf_ )
 // Default Constructor
 {
-    int err;
     string line;
 
     // read input file
-    if ( err = readParam( _inpf_ ) != IR2DOK ) exit( EXIT_FAILURE );
+    if ( readParam( _inpf_ ) != IR2DOK ) exit( EXIT_FAILURE );
 
     // allocate variable arrays
     R1D             = new complex<double>[t1t3_npoints]();
@@ -110,7 +109,7 @@ int IR2D::readParam( string _inpf_ )
 
     if ( trjlen < static_cast<int>(((nsamples-1)*sample_every + (2*t1t3_max + t2))/dt) ){
         cout << "WARNING:: The given trajectory length is not long enough.\n" << 
-                      "\t  Must be " <<  (nsamples-1)*sample_every/dt + (2*t1t3_max/dt + t2) << 
+                      "\t  Must be " <<  ((nsamples-1)*sample_every + (2*t1t3_max + t2))/dt << 
                       " frames long.\n\t  Check input file. Aborting." << endl;
         exit(EXIT_FAILURE);
     }
@@ -146,11 +145,8 @@ void IR2D::fileOpenErr( string _fn_ )
 void IR2D::fileReadErr( string _fn_ )
 // give an error message when I cant open a file
 {
-    cerr << "ERROR:: Reading " << _fn_ << " failed. Aborting." << endl;
-    exit(EXIT_FAILURE);
+    cerr << "ERROR:: Reading " << _fn_ << " failed. Probably reached EOF...Aborting." << endl;
 }
-
-
 
 int IR2D::readEframe( int frame, string which )
 // Read the energy file
@@ -165,8 +161,9 @@ int IR2D::readEframe( int frame, string which )
     // the energy for each frame is stored on a seperate line
     // with an integer frame number at the beginning of the line
     efile.read( (char*)&frameTmp , sizeof(int) );
+    if ( not efile.good() ){ fileReadErr( _efile_ ); return 1;}
     efile.read( (char*)&energyTmp, sizeof(float) );
-    if ( not efile.good() ) fileReadErr( _efile_ );
+    if ( not efile.good() ){ fileReadErr( _efile_ ); return 1;}
 
     // only keep the energies, ignore the couplings for now
     if      ( which.compare("t1") == 0 ) energy_t1 = energyTmp - shift;
@@ -182,7 +179,7 @@ int IR2D::readEframe( int frame, string which )
 int IR2D::readDframe( int frame, string which )
 // Read the dipole file
 {
-    int     frameTmp;
+    int     frameTmp, i;
     float   dipoleTmp[ 3 ];
     int64_t file_offset;
 
@@ -190,20 +187,20 @@ int IR2D::readDframe( int frame, string which )
     dfile.seekg( file_offset );
 
     dfile.read( (char*)&frameTmp, sizeof(int) );
+    if ( not dfile.good() ){ fileReadErr( _dfile_ ); return 1;}
     dfile.read( (char*)dipoleTmp, sizeof(float)*3 );
-    if ( not dfile.good() ) fileReadErr( _dfile_ );
-
+    if ( not dfile.good() ){ fileReadErr( _dfile_ ); return 1;}
 
     // put these into the dipole vector variable
     // note that in the bin file all x's come first, then y's, etc
-    for ( int i = 0; i < 3; i ++ ){
+    for ( i = 0; i < 3; i ++ ){
         if      ( which.compare("t0") == 0 ) dipole_t0[i] = dipoleTmp[i];
         else if ( which.compare("t1") == 0 ) dipole_t1[i] = dipoleTmp[i];
         else if ( which.compare("t2") == 0 ) dipole_t2[i] = dipoleTmp[i];
         else if ( which.compare("t3") == 0 ) dipole_t3[i] = dipoleTmp[i];
         else{
             cout << "ERROR: IR2D::readDframe which= " << which << " unknown." << endl;
-        return 1;
+            return 1;
         }
     }
 
@@ -237,7 +234,7 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
 {
     double mu;
     complex<double> R2D;
-    vec3 polx={1.,0.,0.}, poly={0.,1.,0.}, polz={0.,0.,1.};
+    vec3   polx={1.,0.,0.}, poly={0.,1.,0.}, polz={0.,0.,1.};
     double lifetime_T2_12 = 2.*lifetime_T1/3.;// See Hamm and Zanni eq 4.21
     lifetime_T2_12 = lifetime_T2;             // set equal here, see Jansen 2012 
 
@@ -284,7 +281,7 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
         // include anharmonicity term for the 12 transition
         R2D -= 2.*img*mu*
                conj(eint_t1)*exp(-t1*dt/lifetime_T2)
-                                   *exp(-t2   /lifetime_T1)
+                            *exp(-t2   /lifetime_T1)
                    *eint_t3 *exp(-t3*dt/lifetime_T2_12)
                    *exp(img*(dt*t3)*anharm/HBAR);              
     }
@@ -297,7 +294,7 @@ complex<double> IR2D::getR2D( int t1, int t3, string which )
         // include anharmonicity term for the 12 transition
         R2D -= 2.*img*mu*
                eint_t1*exp(-t1*dt/lifetime_T2)
-                             *exp(-t2   /lifetime_T1)
+                      *exp(-t2   /lifetime_T1)
               *eint_t3*exp(-t3*dt/lifetime_T2_12)
               *exp(img*(dt*t3)*anharm/HBAR);
     }
@@ -447,7 +444,8 @@ int IR2D::write1Dfft()
                                      FFTW_BACKWARD, FFTW_ESTIMATE );
 
     if ( 2*t1t3_npoints > fftlen ){
-        cout << "ERROR:: fftlen = " << fftlen << " < " << "2*t1t3_max/dt = " << 2*t1t3_npoints << endl;
+        cout << "ERROR:: fftlen = " << fftlen << " < " << "2*t1t3_max/dt = " 
+             << 2*t1t3_npoints << endl;
         cout << "Specify longer fftlen in input file. Aborting." << endl;
         exit(EXIT_FAILURE);
     }
@@ -531,6 +529,8 @@ int IR2D::write2DRabs()
         for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
             fftIn[ t1*fftlen + t3 ] = 2.*img*R2D_R1[ t1*t1t3_npoints + t3 ]\
                                       +  img*R2D_R3[ t1*t1t3_npoints + t3 ];
+            // divide t=0 point by 2 (see Hamm and Zanni sec 9.5.3)
+            if ( t1 == 0 and t3 == 0 ) fftIn[ t1*fftlen + t3 ] /=2.;
         }
     }
     fftw_execute(plan);
@@ -554,6 +554,8 @@ int IR2D::write2DRabs()
         for ( t3 = 0; t3 < t1t3_npoints; t3 ++ ){
             fftIn[ t1*fftlen + t3 ] = 2.*img*R2D_R4[ t1*t1t3_npoints + t3 ]\
                                       +  img*R2D_R6[ t1*t1t3_npoints + t3 ];
+            // divide t=0 point by 2 (see Hamm and Zanni sec 9.5.3)
+            if ( t1 == 0 and t3 == 0 ) fftIn[ t1*fftlen + t3 ] /=2.;
         }
     }
     fftw_execute(plan);
@@ -678,7 +680,6 @@ int main( int argc, char* argv[] )
     int sample;
     int frame_t0, frame_t1, frame_t2, frame_t3;
     int t1, t2, t3;
-    int err;
 
     if ( argc != 2 ){
         cout << "ERROR:: Program expects the name of the input" << 
@@ -751,9 +752,9 @@ int main( int argc, char* argv[] )
     }
 
     // do fourier transforms and write them out
-    if ( spectrum.writeR1D() != IR2DOK )    exit(EXIT_FAILURE);
-    if ( spectrum.writeR2D() != IR2DOK )    exit(EXIT_FAILURE);
-    if ( spectrum.write1Dfft() != IR2DOK )  exit(EXIT_FAILURE);
+    if ( spectrum.writeR1D()    != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.writeR2D()    != IR2DOK ) exit(EXIT_FAILURE);
+    if ( spectrum.write1Dfft()  != IR2DOK ) exit(EXIT_FAILURE);
     if ( spectrum.write2DRabs() != IR2DOK ) exit(EXIT_FAILURE);
     cout << ">>> Done!" << endl;
 }
