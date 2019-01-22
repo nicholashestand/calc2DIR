@@ -23,9 +23,9 @@ to see how the program handles reading these files.
 
 Also included is a tutorial folder.
 The run script will generate energy and dipole files according to the parameters specified in that file.
-The back end program stochastic generates correlated random energies and writes energy and diople binary files that can be used as input.
+The back end program stochastic generates correlated random energies and writes energy and dipole binary files that can be used as input.
 This program is based off of the stochastic program developed by T.L.C Jansen to simulate the Hamiltonian for a coupled dimer.
 The repository for his 2D IR code (which is more flexible than the one here) can be found [here](https://github.com/GHlacour/NISE_2015).
 
 ## Contact
-This readme is very brief. If questions arise, please contact me at nicholasjhestand@gmail.com
+This README is very brief. If questions arise, please contact me at nicholasjhestand at gmail.com.
