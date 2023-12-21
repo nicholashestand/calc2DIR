@@ -6,7 +6,7 @@ The calculation is based on material found in "Concepts and methods of 2D Infrar
 
 ## How do I use it
 The program can be built using the supplied Makefile.
-No external libraries are required.
+The [fftw3](http://www.fftw.org/download.html) library is required.
 
 The program can be run from the command line using the command:
 
